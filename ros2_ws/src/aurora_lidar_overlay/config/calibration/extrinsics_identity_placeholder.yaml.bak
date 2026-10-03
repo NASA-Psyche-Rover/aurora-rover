@@ -1,0 +1,17 @@
+# PLACEHOLDER -- identity extrinsic (no rotation, no translation). This is
+# almost certainly wrong for your actual rig; it exists so the node has
+# something to load and doesn't crash before you've calibrated.
+#
+# Generate a real one with:
+#   ros2 run aurora_lidar_overlay get_extrinsics \
+#       --correspondences <path>/correspondences.txt \
+#       --intrinsics config/calibration/intrinsics.yaml \
+#       --output config/calibration/extrinsics.yaml
+#
+# See the package README > Calibration for the full step-by-step.
+extrinsic_matrix:
+  - [1.0, 0.0, 0.0, 0.0]
+  - [0.0, 1.0, 0.0, 0.0]
+  - [0.0, 0.0, 1.0, 0.0]
+  - [0.0, 0.0, 0.0, 1.0]
+source: placeholder_identity

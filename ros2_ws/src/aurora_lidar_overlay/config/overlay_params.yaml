@@ -1,0 +1,49 @@
+aurora_lidar_overlay_node:
+  ros__parameters:
+    image_topic: /oak/rgb/image_raw
+    camera_info_topic: /oak/rgb/camera_info
+    lidar_topic: /livox/lidar
+    output_topic: /aurora/lidar_overlay/image
+
+    # Extrinsic YAML paths are filled in by the launch file (package share
+    # config/calibration/) unless overridden -- see README > Calibration
+    # for how to generate real ones. invert_extrinsic: flip if you solved
+    # for T_lidar_cam instead of T_cam_lidar (check sign/orientation of the
+    # dots first before flipping this -- see README > Troubleshooting).
+    invert_extrinsic: false
+
+    # TF2 path: set true once lidar_frame -> camera_frame is published in
+    # your URDF/static_transform_publisher/SLAM odometry chain, instead of
+    # relying on the static YAML extrinsic. Also required for per-point
+    # motion deskew (see deskew_enabled below).
+    use_tf: false
+    lidar_frame: livox_frame
+    camera_frame: oak_camera
+    tf_timeout_sec: 0.1
+
+    sync_slop: 0.1
+    sync_queue_size: 10
+
+    # depth (camera-frame forward distance, default) | range (Euclidean
+    # from LiDAR origin) | intensity (needs the cloud's intensity field) |
+    # height (LiDAR-frame Z)
+    color_by: depth
+    max_range_m: 25.0
+    min_range_m: 0.3
+    point_size_near_px: 6
+    point_size_far_px: 1
+
+    # Keep every Nth point -- the first FPS knob to reach for if the Jetson
+    # can't keep up with a dense cloud.
+    skip: 1
+    max_points: 200000
+
+    # Best-effort per-point deskew: only actually runs when the cloud has a
+    # per-point `timestamp` field (livox_ros_driver2's PointCloud2 mode has
+    # this; the raw-UDP sensor_bridges publisher does not) AND use_tf is
+    # true with a working odom->lidar_frame TF chain. Does nothing (once,
+    # logged) otherwise.
+    deskew_enabled: true
+    deskew_reference_frame: odom
+
+    log_time_offset_period_sec: 5.0

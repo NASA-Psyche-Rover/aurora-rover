@@ -8,6 +8,7 @@ WS="$HOME/psyche-objdetec/ros2_ws"
 LIVOX_WS="$HOME/ros2_ws"
 PKG_SRC="$WS/src/aurora_lidar_overlay"
 INTR="$PKG_SRC/config/calibration/intrinsics.yaml"
+EXTR="$PKG_SRC/config/calibration/extrinsics.yaml"   # source-tree copy so live-tuned saves persist
 IMG=/oak/rgb/image_raw
 INFO=/oak/rgb/camera_info
 LIDAR=/livox/lidar
@@ -71,7 +72,7 @@ wait_topic "$LIDAR" "LiDAR" || exit 1
 echo "[run] launching overlay (pinned parameters)"
 start overlay "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec ros2 launch aurora_lidar_overlay overlay.launch.py \
   image_topic:=$IMG camera_info_topic:=$INFO lidar_topic:=$LIDAR output_topic:=$OUT \
-  invert_extrinsic:=false use_tf:=false color_by:=depth skip:=1"
+  extrinsic_yaml:=$EXTR intrinsic_yaml:=$INTR invert_extrinsic:=false use_tf:=false color_by:=depth skip:=1"
 sleep 5
 [ "${NO_VIEWER:-0}" = 1 ] || start viewer "exec ros2 run rqt_image_view rqt_image_view $OUT"
 echo "[run] running. Logs in $LOGDIR. Ctrl+C to stop."
