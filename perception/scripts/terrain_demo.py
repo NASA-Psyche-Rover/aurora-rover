@@ -8,7 +8,7 @@ own.
 Depth inference runs in a background thread so the display loop never blocks
 on a MiDaS pass -- the main loop always shows the latest available result.
 
-Run from the repo root:
+Run from perception/:
     python scripts/terrain_demo.py
 """
 

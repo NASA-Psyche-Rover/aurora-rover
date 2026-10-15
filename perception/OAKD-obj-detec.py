@@ -30,7 +30,7 @@ Threads: the main loop only shows camera frames, so the feed stays at camera
 rate. Detection + distance + decision + heatmap run in a background thread
 that always works on the newest frame; the display draws its latest results.
 
-Run from the repo root:   python OAKD-obj-detec.py
+Run from perception/:     python OAKD-obj-detec.py
   --snapshot PATH   also write the display to PATH about once a second
   --no-display      run without opening a window (use with --snapshot)
 Keys: q quits.

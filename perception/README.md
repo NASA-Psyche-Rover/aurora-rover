@@ -1,4 +1,6 @@
-# psyche-objdetec
+# AURORA — Perception & Navigation
+
+> Part of the [AURORA rover monorepo](../README.md). All commands below run from this `perception/` folder (`cd perception`).
 
 Perception and navigation-decision system for an autonomous rover designed to traverse
 the surface of asteroid Psyche. The project's focus is **mobility**: seeing what's in
@@ -107,7 +109,7 @@ Prints frame-drop rate and inference latency (mean/P95) on exit.
 ```bash
 python scripts/quantize_profile.py
 ```
-Writes `quantize_results.json` to the project root.
+Writes `quantize_results.json` to `perception/`.
 
 **Train a custom detector** on the asteroid dataset:
 ```bash

@@ -12,7 +12,7 @@ Dependencies:
 
 Outputs:
     - Terminal summary of latency and compression metrics
-    - quantize_results.json saved to project root
+    - quantize_results.json saved to perception/
 """
 
 import time
