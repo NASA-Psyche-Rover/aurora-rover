@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aurora_lidar_overlay</name>
+  <version>0.1.0</version>
+  <description>Waymo-style depth-colored LiDAR-on-camera overlay for the AURORA rover (Livox Mid-360 + OAK-D-Lite), live and rosbag-replay.</description>
+  <maintainer email="aayoushiyer@gmail.com">aurora</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>std_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>cv_bridge</depend>
+  <depend>message_filters</depend>
+  <depend>tf2_ros</depend>
+  <depend>python3-numpy</depend>
+  <depend>python3-opencv</depend>
+  <depend>python3-yaml</depend>
+  <depend>ament_index_python</depend>
+  <depend>rosbag2_py</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

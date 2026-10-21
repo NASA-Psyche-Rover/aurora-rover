@@ -1,0 +1,27 @@
+# PLACEHOLDER -- rough guess, NOT a real calibration. This exists only so
+# the node has a fallback before a real CameraInfo topic or a real
+# calibration file is available; do not trust projected pixel positions
+# until you've replaced this.
+#
+# Generate a real one with either:
+#   ros2 run aurora_lidar_overlay get_intrinsics_checkerboard \
+#       --rows <N> --columns <M> --square-size-m <S> \
+#       --width 640 --height 480 --output config/calibration/intrinsics.yaml
+# (recommended -- matches your exact streaming resolution) or:
+#   ros2 run aurora_lidar_overlay get_intrinsics_factory \
+#       --width 640 --height 480 --output config/calibration/intrinsics.yaml
+# (fast fallback/cross-check only -- see README > Calibration for why)
+camera_matrix:
+  rows: 3
+  columns: 3
+  data:
+    - [500.0, 0.0, 320.0]
+    - [0.0, 500.0, 240.0]
+    - [0.0, 0.0, 1.0]
+distortion_coefficients:
+  rows: 1
+  columns: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+image_width: 640
+image_height: 480
+source: placeholder_guess
