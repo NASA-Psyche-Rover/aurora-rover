@@ -1,0 +1,42 @@
+# Fine-tuned for our actual hardware (originally targeted a RoboSense LiDAR +
+# a generic segmentation-node camera topic, over a Docker workspace mounted
+# at /ros2_ws). Our devices: a Livox Mid-360 (no ROS2 driver installed --
+# see ros2_ws/src/sensor_bridges/livox_pointcloud_publisher.py, which speaks
+# the same raw UDP protocol scripts/live_camera_lidar_fusion.py already
+# uses) and an OAK-D-Lite (bridged the same way -- see
+# ros2_ws/src/sensor_bridges/oak_image_publisher.py, reusing
+# src/camera_stream.py's validated v3 DepthAI pipeline).
+lidar:
+  lidar_topic: /livox/lidar
+  frame_id: livox_frame
+
+camera:
+  image_topic: /oak/rgb/image_raw
+  projected_topic: /oak/rgb/lidar_projected
+  image_size:
+    width: 640
+    height: 480
+  frame_id: oak_camera
+
+# NOT verified against a real physical board -- these are the upstream
+# repo's own defaults. Set rows/columns to your board's INNER corner count
+# (not square count) and square_size_meters to your board's real square
+# size before trusting get_intrinsic_camera_calibration's output.
+chessboard:
+  pattern_size:
+    rows: 7
+    columns: 9
+  square_size_meters: 0.41
+
+general:
+  # Real filesystem paths (this workspace isn't in a /ros2_ws Docker mount).
+  config_folder: /home/aurora/psyche-objdetec/ros2_ws/src/ros2_camera_lidar_fusion/config
+  data_folder: /home/aurora/psyche-objdetec/ros2_ws/src/ros2_camera_lidar_fusion/data
+  correspondence_file: ros2_camera_lidar_fusion_correspondences.txt
+  camera_intrinsic_calibration: camera_intrinsic_calibration.yaml
+  camera_extrinsic_calibration: camera_extrinsic_calibration.yaml
+  slop: 0.1
+  max_file_saved: 10
+  keyboard_listener: True
+  get_intrinsics: True
+  get_extrinsics: True

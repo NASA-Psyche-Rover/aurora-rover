@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sensor_bridges</name>
+  <version>0.0.1</version>
+  <description>
+    Publishes our actual sensors (Livox Mid-360 over raw UDP, OAK-D-Lite via
+    DepthAI) as standard ROS2 topics (sensor_msgs/PointCloud2,
+    sensor_msgs/Image) so ros2_camera_lidar_fusion -- which expects those,
+    not a specific driver -- can run against our hardware without a
+    livox_ros_driver2 or depthai-ros build.
+  </description>
+  <maintainer email="aayoushiyer@gmail.com">aayouiyer</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
