@@ -1,0 +1,48 @@
+/laser_mapping:
+  ros__parameters:
+    common:
+      lid_topic: "/livox/lidar"
+      imu_topic: "/livox/imu"
+      time_sync_en: false          # ONLY turn on if there is 100+ ms offset between LiDAR and IMU stamps
+      time_offset_lidar_to_imu: 0.0
+
+    preprocess:
+      lidar_type: 1                # 1=Livox (AVIA/MID360 CustomMsg), 2=Velodyne, 3=Ouster
+      scan_line: 4                 # MID-360 has 4 scan lines
+      blind: 0.1                   # keep everything from 0.1 m out (MID-360 min range)
+      timestamp_unit: 3            # unused for lidar_type 1
+      scan_rate: 10
+
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 360.0            # MID-360 full 360 deg horizontal FoV
+      det_range: 100.0             # accept every return the MID-360 can make (physical max ~70 m)
+      extrinsic_est_en: false
+      extrinsic_T: [ -0.011, -0.02329, 0.04412 ]   # IMU pose in LiDAR frame (MID-360 manual)
+      extrinsic_R: [ 1.0, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0 ]
+
+    publish:
+      path_en: true
+      scan_publish_en: true
+      dense_publish_en: true       # full raw resolution -> this is what the saved map is built from
+      scan_bodyframe_pub_en: true
+      map_en: true                 # accumulate the whole map on /Laser_map
+
+    max_iteration: 4
+    filter_size_surf: 0.1          # EKF registration downsample (does NOT affect saved-map detail)
+    filter_size_map: 0.15          # ikd-tree map voxel; 0.15 keeps headroom at long range
+    cube_side_length: 2000.0       # keep a large local map resident for long-range consistency
+    point_filter_num: 1            # every incoming point -> maximum density in the saved map
+    feature_extract_enable: false
+    runtime_pos_log_enable: false
+
+    map_file_path: "/home/aurora/ros2_ws/PCD/room_map.pcd"  # YAML does not expand $HOME; edit for your user
+
+    pcd_save:
+      pcd_save_en: true            # required for /map_save to write
+      interval: -1

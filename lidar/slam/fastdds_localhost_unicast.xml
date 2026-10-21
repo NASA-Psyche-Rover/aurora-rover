@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  FastDDS profile: unicast-only discovery over loopback.
+  Works around broken multicast discovery on this Jetson
+  (loopback iface has no MULTICAST flag; cross-iface multicast unreliable).
+  Use for an all-on-Jetson ROS 2 graph. Enable with:
+     export FASTRTPS_DEFAULT_PROFILES_FILE=/home/aurora/ros2_ws/fastdds_localhost_unicast.xml
+-->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <participant profile_name="localhost_unicast" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <metatrafficUnicastLocatorList>
+            <locator><udpv4><address>127.0.0.1</address></udpv4></locator>
+          </metatrafficUnicastLocatorList>
+          <initialPeersList>
+            <locator><udpv4><address>127.0.0.1</address><port>7410</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7412</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7414</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7416</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7418</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7420</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7422</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7424</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7426</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7428</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7430</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7432</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7434</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7436</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7438</port></udpv4></locator>
+            <locator><udpv4><address>127.0.0.1</address><port>7440</port></udpv4></locator>
+          </initialPeersList>
+        </builtin>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>
