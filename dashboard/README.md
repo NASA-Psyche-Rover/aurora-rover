@@ -6,7 +6,7 @@ A local web dashboard that shows the rover's perception stack live on one screen
 |---|---|---|
 | **LiDAR overlay** | Mid-360 points projected onto the OAK-D image, coloured by range | `perception/ros2_ws/src/aurora_lidar_overlay` |
 | **Object detection** | YOLO boxes with stereo distances, drop/slope edge, PROCEED / CAUTION / STOP, depth heatmap inset | `perception/OAKD-obj-detec.py` (`Perception`, `annotate`) |
-| **LiDAR point cloud** | Live 3D render of the Mid-360 cloud, last 8 s of returns, colour = height. Drag to rotate, scroll to zoom, double-click to reset the view (the cloud does not spin on its own) | `cloud_render.py` |
+| **LiDAR point cloud** | Live 3D view of the Mid-360 cloud (drawn in the browser with WebGL), last 8 s of returns, colour = height. Drag to rotate, scroll to zoom, double-click to reset the view (the cloud does not spin on its own) | `cloud_render.py` + WebGL in `static/index.html` |
 
 Each panel has a metrics strip (frame rates, latency, nearest distance, LiDAR points/s, 60 s trend lines). The enlarged detection view also lists the decision thresholds read from `src/decision.py` / `src/metric_terrain.py`.
 
@@ -22,7 +22,7 @@ It wraps `perception/scripts/run_lidar_overlay.sh` (same drivers, same pinned ov
 
 ## How it fits together
 
-The dashboard never opens a sensor. The OAK-D bridge (`sensor_bridges/oak_image_publisher`) is the one process that owns the camera and publishes RGB, camera_info and, new, aligned stereo depth (`/oak/stereo/depth`, 16UC1 mm). `server.py` subscribes to those topics plus `/livox/lidar` and the overlay output, runs detection and the cloud render in background threads, and serves MJPEG streams and `/api/metrics` JSON. Because it only reads topics, it works the same on replayed data.
+The dashboard never opens a sensor. The OAK-D bridge (`sensor_bridges/oak_image_publisher`) is the one process that owns the camera and publishes RGB, camera_info and, new, aligned stereo depth (`/oak/stereo/depth`, 16UC1 mm). `server.py` subscribes to those topics plus `/livox/lidar` and the overlay output, runs detection in a background thread, and serves MJPEG streams, `/api/metrics` JSON and the LiDAR points (`/api/cloud`, compact binary). The browser draws the cloud itself with WebGL, so rotating it is instant and costs the Jetson nothing. Because it only reads topics, it works the same on replayed data.
 
 ## Developing without hardware
 

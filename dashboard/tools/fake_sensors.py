@@ -7,7 +7,7 @@ Publishes the same topics the real bridges do -- /oak/rgb/image_raw,
 made-up scene: flat ground seen by a low, down-pitched camera, one box 1.2 m
 ahead, and a LiDAR cloud of the same floor, box and a back wall. The scene is
 only roughly consistent between sensors; it exists to exercise the pipeline
-(overlay node, detection, cloud renderer, web UI), not to validate geometry.
+(overlay node, detection, web UI), not to validate geometry.
 
 Run (ROS sourced):  python3 dashboard/tools/fake_sensors.py
 """
