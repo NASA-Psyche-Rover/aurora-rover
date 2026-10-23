@@ -203,12 +203,14 @@ if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]);
 // so dragging never waits on the network or the Jetson CPU.
 const cloud = document.querySelector(".media.cloud");
 const glc = $("cloud-gl");
-const gl = glc.getContext("webgl", { antialias: true, alpha: false });
+const gl = glc.getContext("webgl", { antialias: false, alpha: false });
 let cloudFps = 0, cloudWindowMs = 8000;
 const HOME = { yaw: 200, pitch: 24, dist: 7 };
 const cam = { ...HOME };
 const TARGET = [2, 0, 0.2], FOV_X = 55 * Math.PI / 180, QSCALE = 800;
-let dirty = true, ground = -0.3, groundAt = 0, seq = 0;
+let dirty = true, ground = -0.3, groundAt = 0, seq = 0, drag = null;
+let softGL = false;   // software renderer (no GPU access in this browser): send and draw fewer points
+const MAX_POINTS = () => softGL ? 25000 : 100000;
 const frames = [];   // { t, n, vbo, z } -- t = estimated capture time (performance.now() ms)
 
 function compile(vs, fs) {
@@ -259,6 +261,8 @@ function initGL() {
   arrowBuf = buf(arrow); arrowN = arrow.length / 3;
   markBuf = buf([0, 0, 0]);
   gl.enable(gl.DEPTH_TEST);
+  const info = gl.getExtension("WEBGL_debug_renderer_info");
+  softGL = /swiftshader|llvmpipe|software/i.test(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "");
 }
 
 // ---- camera: orbit around TARGET; yaw 0 looks along the LiDAR's +x from behind ----
@@ -281,7 +285,8 @@ function viewProj(aspect) {
 }
 
 function resize() {
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  // software GL is fill-rate bound: draw at 60% resolution and let CSS scale it up
+  const dpr = softGL ? 0.6 : Math.min(devicePixelRatio || 1, 2);
   const w = Math.max(Math.round(glc.clientWidth * dpr), 2), h = Math.max(Math.round(glc.clientHeight * dpr), 2);
   if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; dirty = true; }
   return dpr;
@@ -329,7 +334,9 @@ function draw() {
   gl.uniform1f(ptsP.u.uDist, cam.dist);
   gl.uniform1f(ptsP.u.uPx, 2.2 * dpr);
   gl.enableVertexAttribArray(ptsP.a.p);
-  for (const f of frames) { gl.bindBuffer(gl.ARRAY_BUFFER, f.vbo); gl.vertexAttribPointer(ptsP.a.p, 3, gl.SHORT, false, 0, 0); gl.drawArrays(gl.POINTS, 0, f.n); }
+    // while dragging on a software renderer, draw a third of each frame so the camera keeps up
+  const share = softGL && drag ? 0.35 : 1;
+  for (const f of frames) { gl.bindBuffer(gl.ARRAY_BUFFER, f.vbo); gl.vertexAttribPointer(ptsP.a.p, 3, gl.SHORT, false, 0, 0); gl.drawArrays(gl.POINTS, 0, Math.floor(f.n * share)); }
 
   gl.useProgram(flatP.prog);   // sensor marker on top: white dot at the origin
   gl.disable(gl.DEPTH_TEST);
@@ -344,7 +351,7 @@ function loop() { draw(); requestAnimationFrame(loop); }
 // ---- data: long-poll /api/cloud for frames newer than `seq` ----
 async function pull() {
   try {
-    const buf = await (await fetch(`/api/cloud?since=${seq}`, { cache: "no-store" })).arrayBuffer();
+    const buf = await (await fetch(`/api/cloud?since=${seq}&max=${MAX_POINTS()}`, { cache: "no-store" })).arrayBuffer();
     const dv = new DataView(buf), now = performance.now();
     const latest = dv.getUint32(0, true), n = dv.getUint32(4, true);
     let off = 8;
@@ -369,7 +376,6 @@ if (!gl) {
 }
 
 // ---- cloud camera: drag = rotate, wheel = zoom, double-click = reset view ----
-let drag = null;
 cloud.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; cloud.setPointerCapture(e.pointerId); cloud.classList.add("drag"); });
 cloud.addEventListener("pointermove", e => {
   if (!drag) return;
@@ -465,7 +471,8 @@ function render(m) {
     ["Path corridor", `± ${th.corridor_half_width_m} m`],
   ].map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`).join("");
 
-  setTile("m-c-pts", m.cloud.points_shown ? (m.cloud.points_shown / 1000).toFixed(0) + "k" : "–", "");
+  const shown = frames.reduce((a, f) => a + f.n, 0);
+  setTile("m-c-pts", shown ? (shown / 1000).toFixed(0) + "k" : "–", "");
   setTile("m-c-win", fmt(m.cloud.window_s, 0), "s");
   setTile("m-c-fps", fmt(cloudFps, 0), "fps");
 

@@ -86,9 +86,9 @@ if [ "${DASHBOARD:-0}" = 1 ]; then
   WAIT_PID="${PIDS[-1]}"
   for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/api/metrics" >/dev/null 2>&1 && break; sleep 1; done
   if [ "${KIOSK:-1}" = 1 ]; then   # KIOSK=0 opens a normal browser window instead
-    start browser "exec chromium-browser --kiosk --noerrdialogs --disable-infobars --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
+    start browser "exec chromium-browser --enable-unsafe-swiftshader --kiosk --noerrdialogs --disable-infobars --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
   elif [ "${NO_BROWSER:-0}" != 1 ]; then
-    start browser "exec chromium-browser --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
+    start browser "exec chromium-browser --enable-unsafe-swiftshader --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
   fi
 elif [ "${NO_VIEWER:-0}" != 1 ]; then
   start viewer "exec ros2 run rqt_image_view rqt_image_view $OUT"

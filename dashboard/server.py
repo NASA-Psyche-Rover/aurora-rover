@@ -282,7 +282,8 @@ def make_app(node):
         deadline = time.time() + 0.5
         while node.cloud_acc.version <= since and time.time() < deadline:
             time.sleep(0.01)
-        return Response(node.cloud_acc.pack(since), mimetype="application/octet-stream",
+        limit = max(request.args.get("max", 0, type=int), 1000) or None   # clients on software GL ask for fewer points
+        return Response(node.cloud_acc.pack(since, max_points=limit), mimetype="application/octet-stream",
                         headers={"Cache-Control": "no-store"})
 
     return app

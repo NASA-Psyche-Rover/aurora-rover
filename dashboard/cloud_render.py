@@ -57,10 +57,11 @@ class CloudAccumulator:
             self._expire(now)
             return min(sum(len(f) for _, _, f in self._frames), self.max_points)
 
-    def pack(self, since=0, now=None):
+    def pack(self, since=0, now=None, max_points=None):
         """Binary message with every frame newer than `since` (see module doc).
 
-        If the window holds more than `max_points`, every frame is strided by
+        If the window holds more than `max_points` (default: the accumulator's;
+        a client may ask for fewer), every frame is strided by
         the same factor, so the client's total stays bounded and spans the
         whole scene."""
         now = time.time() if now is None else now
@@ -71,7 +72,8 @@ class CloudAccumulator:
         if since > latest:      # server restarted: resend everything
             since = 0
         total = sum(len(f) for _, _, f in frames)
-        k = max(-(-total // self.max_points), 1)
+        limit = min(max_points or self.max_points, self.max_points)
+        k = max(-(-total // limit), 1)
         sel = [fr for fr in frames if fr[1] > since]
         out = [struct.pack("<II", latest, len(sel))]
         for t, seq, xyz in sel:
