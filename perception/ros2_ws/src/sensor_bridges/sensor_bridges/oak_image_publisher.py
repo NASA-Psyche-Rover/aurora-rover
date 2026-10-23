@@ -71,6 +71,7 @@ class OakImagePublisher(Node):
         super().__init__("oak_image_publisher")
         self.declare_parameter("topic", "/oak/rgb/image_raw")
         self.declare_parameter("camera_info_topic", "/oak/rgb/camera_info")
+        self.declare_parameter("depth_topic", "/oak/stereo/depth")   # "" disables; 16UC1 millimeters, RGB-aligned
         self.declare_parameter("frame_id", "oak_camera")
         self.declare_parameter("width", 640)
         self.declare_parameter("height", 480)
@@ -83,6 +84,9 @@ class OakImagePublisher(Node):
         intrinsics_yaml = self.get_parameter("intrinsics_yaml").value
 
         self.pub = self.create_publisher(Image, topic, 5)
+        depth_topic = self.get_parameter("depth_topic").value
+        self.depth_pub = self.create_publisher(Image, depth_topic, 5) if depth_topic else None
+        self._last_depth_id = None
         self.bridge = CvBridge()
 
         self.camera_info_msg = None
@@ -108,7 +112,7 @@ class OakImagePublisher(Node):
         self.timer = self.create_timer(1.0 / 30.0, self.tick)
 
     def tick(self):
-        rgb, _depth = self.cam.read()
+        rgb, depth = self.cam.read()
         if rgb is None:
             return
         stamp = self.get_clock().now().to_msg()
@@ -117,6 +121,14 @@ class OakImagePublisher(Node):
         msg.header.stamp = stamp
         msg.header.frame_id = self.frame_id
         self.pub.publish(msg)
+
+        # read() hands back the cached depth between camera ticks; publish each frame once.
+        if self.depth_pub is not None and depth is not None and depth is not self._last_depth_id:
+            self._last_depth_id = depth
+            dmsg = self.bridge.cv2_to_imgmsg(np.ascontiguousarray(depth, dtype=np.uint16), encoding="16UC1")
+            dmsg.header.stamp = stamp
+            dmsg.header.frame_id = self.frame_id
+            self.depth_pub.publish(dmsg)
 
         if self.caminfo_pub is not None:
             self.camera_info_msg.header.stamp = stamp

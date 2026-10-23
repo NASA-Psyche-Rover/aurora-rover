@@ -132,6 +132,35 @@ def status_panel(size, decision, reason, hazard_m, hazard_source, terrain, items
     return panel
 
 
+def annotate(view, terrain, rocks, K):
+    """Draw obstacle boxes, the drop/slope edge and YOLO boxes onto `view` in
+    place. Shared by the OpenCV window here and the web dashboard."""
+    for ob in terrain.obstacles:
+        if not ob.in_corridor:
+            continue
+        x1, y1, x2, y2 = ob.xyxy
+        c = distance_color(ob.distance_m)
+        cv2.rectangle(view, (x1, y1), (x2, y2), c, 1, cv2.LINE_AA)
+        put(view, f"obstacle {ob.distance_m:.2f} m", (x1, min(y2 + 14, TARGET_HEIGHT - 4)), 0.4, c)
+
+    if terrain.hazard_kind is not None:
+        c = terrain_color(terrain)
+        line = mt.edge_line_px(terrain, K, terrain.hazard_m)
+        if line is not None:
+            cv2.line(view, line[0], line[1], c, 3, cv2.LINE_AA)
+        text = f"{TERRAIN_NAMES[terrain.hazard_kind]}  {terrain.hazard_m:.2f} m"
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+        x = (TARGET_WIDTH - tw) // 2
+        cv2.rectangle(view, (x - 10, 12), (x + tw + 10, 24 + th + 8), (0, 0, 0), -1)
+        put(view, text, (x, 22 + th), 0.8, c, 2)
+
+    for (x1, y1, x2, y2), label, dist, in_corridor in rocks:
+        c = distance_color(dist) if in_corridor else (200, 200, 200)
+        cv2.rectangle(view, (x1, y1), (x2, y2), c, 2, cv2.LINE_AA)
+        text = f"{label} {dist:.2f} m" if dist is not None else f"{label} (no depth)"
+        put(view, text, (x1, max(y1 - 8, 16)), 0.5, c)
+
+
 class Worker(threading.Thread):
     """Background loop that always processes the newest input and publishes
     its latest output. Input and output are single attributes swapped by
@@ -283,30 +312,7 @@ def main():
 
         # -------- Drawing (on a copy: the workers are still reading `frame`) --------
         view = frame.copy()
-        for ob in terrain.obstacles:
-            if not ob.in_corridor:
-                continue
-            x1, y1, x2, y2 = ob.xyxy
-            c = distance_color(ob.distance_m)
-            cv2.rectangle(view, (x1, y1), (x2, y2), c, 1, cv2.LINE_AA)
-            put(view, f"obstacle {ob.distance_m:.2f} m", (x1, min(y2 + 14, TARGET_HEIGHT - 4)), 0.4, c)
-
-        if terrain.hazard_kind is not None:
-            c = terrain_color(terrain)
-            line = mt.edge_line_px(terrain, K, terrain.hazard_m)
-            if line is not None:
-                cv2.line(view, line[0], line[1], c, 3, cv2.LINE_AA)
-            text = f"{TERRAIN_NAMES[terrain.hazard_kind]}  {terrain.hazard_m:.2f} m"
-            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-            x = (TARGET_WIDTH - tw) // 2
-            cv2.rectangle(view, (x - 10, 12), (x + tw + 10, 24 + th + 8), (0, 0, 0), -1)
-            put(view, text, (x, 22 + th), 0.8, c, 2)
-
-        for (x1, y1, x2, y2), label, dist, in_corridor in rocks:
-            c = distance_color(dist) if in_corridor else (200, 200, 200)
-            cv2.rectangle(view, (x1, y1), (x2, y2), c, 2, cv2.LINE_AA)
-            text = f"{label} {dist:.2f} m" if dist is not None else f"{label} (no depth)"
-            put(view, text, (x1, max(y1 - 8, 16)), 0.5, c)
+        annotate(view, terrain, rocks, K)
 
         t1 = time.time()
         frame_s = 0.9 * frame_s + 0.1 * (t1 - t0)   # average the interval, not its inverse
