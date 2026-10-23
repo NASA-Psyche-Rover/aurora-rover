@@ -8,9 +8,9 @@ streams, and serves them with Flask on http://localhost:8080:
   /stream/overlay    LiDAR points drawn on the OAK-D image (from aurora_lidar_overlay)
   /stream/detection  YOLO boxes + metric distances + drop/slope edge
   /stream/depth      the metric distance heatmap (inset on the detection panel)
-  /stream/cloud      3D render of the live Livox point cloud (orbit camera)
+  /stream/cloud      3D render of the live Livox point cloud (orbit camera, moved by dragging)
   /api/metrics       JSON for the metrics strips
-  /api/view          POST {dyaw, dpitch, zoom, auto} to steer the cloud camera
+  /api/view          POST {dyaw, dpitch, zoom, reset} to steer the cloud camera
 
 It never opens a sensor itself, so it works on live drivers or on a replayed
 bag alike. Detection reuses perception/OAKD-obj-detec.py (Perception,
@@ -231,13 +231,14 @@ class Dashboard(Node):
     # ---------------- cloud render thread ----------------
     def cloud_loop(self):
         period = 1.0 / CLOUD_FPS
-        last = time.time()
+        seen = None
         while not self._det_stop.is_set():
             t0 = time.time()
-            if self.cloud_acc.age_s() is not None and self.cloud_acc.age_s() < STALE_S:
-                self.cloud_renderer.step_orbit(t0 - last)
+            state = (self.cloud_acc.version, self.cloud_renderer.view_version)
+            # draw only when there is new LiDAR data or the camera moved
+            if state != seen and self.cloud_acc.age_s() is not None and self.cloud_acc.age_s() < STALE_S:
+                seen = state
                 self.channels["cloud"].publish(encode(self.cloud_renderer.render(self.cloud_acc.points()), 85))
-            last = t0
             time.sleep(max(period - (time.time() - t0), 0.005))
 
     # ---------------- metrics ----------------
@@ -254,8 +255,7 @@ class Dashboard(Node):
             "detection": d,
             "cloud": {"online": ch["cloud"].online(), "render_fps": ch["cloud"].fps(),
                       "lidar_hz": round(msgs_hz, 1), "points_per_s": int(pts_hz),
-                      "points_shown": int(len(self.cloud_acc.points())), "window_s": self.cloud_acc.window_s,
-                      "auto_orbit": self.cloud_renderer.auto_orbit},
+                      "points_shown": int(len(self.cloud_acc.points())), "window_s": self.cloud_acc.window_s},
             "thresholds": {
                 "object_stop_m": det.STOP_DISTANCE_M, "object_caution_m": det.CAUTION_DISTANCE_M,
                 "drop_stop_m": det.TERRAIN_STOP_DISTANCE_M, "drop_caution_m": det.TERRAIN_CAUTION_DISTANCE_M,
@@ -295,8 +295,8 @@ def make_app(node):
     def view():
         body = request.get_json(silent=True) or {}
         r = node.cloud_renderer
-        if body.get("auto") is not None:
-            r.auto_orbit = bool(body["auto"])
+        if body.get("reset"):
+            r.reset()
         if body.get("dyaw") or body.get("dpitch"):
             r.rotate(float(body.get("dyaw", 0)), float(body.get("dpitch", 0)))
         if body.get("zoom"):

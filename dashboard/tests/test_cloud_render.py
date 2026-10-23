@@ -50,9 +50,14 @@ def test_render_draws_points_and_handles_empty():
     assert lit > 0.02
 
 
-def test_rotate_disables_orbit_and_clamps_pitch():
+def test_view_is_static_until_steered_and_clamps():
     r = CloudRenderer()
+    v0, home = r.view_version, (r.yaw, r.pitch, r.dist)
+    r.render(_room())
+    assert r.view_version == v0 and (r.yaw, r.pitch, r.dist) == home
     r.rotate(10, 500)
-    assert not r.auto_orbit and r.pitch == 85.0
+    assert r.pitch == 85.0 and r.view_version > v0
     r.zoom(100)
     assert r.dist == 30.0
+    r.reset()
+    assert (r.yaw, r.pitch, r.dist) == home

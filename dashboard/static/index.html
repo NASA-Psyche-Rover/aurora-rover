@@ -161,7 +161,7 @@ main.zoomed .inset { width: 22%; }
           <div class="trend"><div class="k"><span>Points per second</span><span id="t-c-pps">–</span></div><canvas data-trend="c-pps"></canvas></div>
           <div class="trend"><div class="k"><span>Render frame rate</span><span id="t-c-fps">–</span></div><canvas data-trend="c-fps"></canvas></div>
         </div>
-        <div class="cap">Colour = height above ground. Drag to rotate, scroll to zoom, double-click to resume auto-orbit. Arrow marks the rover's forward direction.</div>
+        <div class="cap">Colour = height above ground. Drag to rotate, scroll to zoom, double-click to reset the view. The cloud stays still until you move it. Arrow marks the rover's forward direction.</div>
       </div>
     </div>
   </section>
@@ -195,7 +195,7 @@ addEventListener("keydown", e => {
 // open straight into a zoomed panel with e.g. /#2
 if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]);
 
-// ---- cloud camera: drag = rotate, wheel = zoom, double-click = auto-orbit ----
+// ---- cloud camera: drag = rotate, wheel = zoom, double-click = reset view ----
 const cloud = document.querySelector(".media.cloud");
 let drag = null, pending = { dyaw: 0, dpitch: 0 }, sendTimer = null;
 const post = body => fetch("/api/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
@@ -212,7 +212,7 @@ cloud.addEventListener("pointermove", e => {
 const endDrag = () => { drag = null; cloud.classList.remove("drag"); setTimeout(() => { moved = false; }, 0); };
 cloud.addEventListener("pointerup", endDrag); cloud.addEventListener("pointercancel", endDrag);
 cloud.addEventListener("wheel", e => { e.preventDefault(); post({ zoom: e.deltaY > 0 ? 1.1 : 0.9 }); }, { passive: false });
-cloud.addEventListener("dblclick", () => post({ auto: true }));
+cloud.addEventListener("dblclick", () => post({ reset: true }));
 
 // ---- sparklines: last 60 s of samples, drawn client-side ----
 const HIST = {}, HIST_MAX = 120;

@@ -2,13 +2,13 @@
 Software renderer for the dashboard's LiDAR point-cloud panel.
 
 Takes recent Livox points (LiDAR frame: x forward, y left, z up, metres) and
-draws them from an orbiting virtual camera into a BGR image. Pure numpy +
+draws them from a manually steered orbit camera into a BGR image. Pure numpy +
 OpenCV, no ROS and no GPU, so it runs the same on the Jetson and in tests.
 
   CloudAccumulator   rolling window of recent frames -> one (N, 3) array,
                      so a static scene visibly fills in while a moving one
                      shows only its recent past
-  CloudRenderer      orbit camera (yaw / pitch / zoom), height colouring,
+  CloudRenderer      orbit camera (yaw / pitch / zoom, moves only when steered), height colouring,
                      distance fade, ground rings, sensor marker
 """
 import threading
@@ -47,6 +47,7 @@ class CloudAccumulator:
         self._lock = threading.Lock()
         self._rng = np.random.default_rng(0)
         self._arrivals = deque(maxlen=50)   # (t, n_points) for rate metrics
+        self.version = 0          # bumped on every add, so the renderer can skip unchanged frames
 
     def add(self, xyz, t=None):
         t = time.time() if t is None else t
@@ -56,6 +57,7 @@ class CloudAccumulator:
         with self._lock:
             self._frames.append((t, xyz))
             self._arrivals.append((t, len(xyz)))
+            self.version += 1
             self._expire(t)
 
     def _expire(self, now):
@@ -69,10 +71,13 @@ class CloudAccumulator:
             frames = [f for _, f in self._frames]
         if not frames:
             return np.zeros((0, 3), np.float32)
-        pts = np.concatenate(frames)
-        if len(pts) > self.max_points:
-            pts = pts[self._rng.choice(len(pts), self.max_points, replace=False)]
-        return pts
+        total = sum(len(f) for f in frames)
+        if total > self.max_points:
+            # stride each frame before joining: far cheaper than concatenating
+            # everything and picking a random subset, and still spans the whole scene
+            k = -(-total // self.max_points)
+            frames = [f[int(self._rng.integers(k))::k] for f in frames]
+        return np.concatenate(frames)
 
     def rates(self, now=None):
         """(messages per second, points per second) over the recent arrivals."""
@@ -99,12 +104,14 @@ class CloudRenderer:
     it); zoom scales the camera distance. The view state is plain attributes
     so the web layer can nudge it from request threads."""
 
+    HOME = (200.0, 24.0, 7.0)    # yaw, pitch, distance
+
     def __init__(self, size=(960, 720), fov_deg=55.0):
         self.w, self.h = size
         self.f = 0.5 * self.w / np.tan(np.radians(fov_deg) / 2)
-        self.yaw, self.pitch, self.dist = 200.0, 24.0, 7.0
+        self.yaw, self.pitch, self.dist = self.HOME
         self.target = np.array([2.0, 0.0, 0.2], np.float32)
-        self.auto_orbit = True
+        self.view_version = 0     # bumped when the camera moves
         self._ground_z = -0.3
         self.bg = np.array([22, 18, 14], np.uint8)   # BGR, near-black blue
 
@@ -122,26 +129,26 @@ class CloudRenderer:
     def _project(self, pts):
         """(N, 3) world points -> (u, v, depth) with depth along the view axis."""
         eye, right, up, fwd = self._basis()
-        rel = pts - eye
-        z = rel @ fwd
-        x = rel @ right
-        y = rel @ up
+        # one (N,3)x(3,3) product instead of three; subtracting the eye after
+        # projecting avoids allocating pts - eye
+        x, y, z = (pts @ np.stack([right, up, fwd], axis=1) - np.stack([right, up, fwd]) @ eye).T
         zs = np.maximum(z, 1e-3)
         u = self.w / 2 + self.f * x / zs
         v = self.h / 2 - self.f * y / zs
         return u, v, z
 
-    def step_orbit(self, dt, deg_per_s=9.0):
-        if self.auto_orbit:
-            self.yaw = (self.yaw + deg_per_s * dt) % 360.0
-
     def rotate(self, dyaw, dpitch):
-        self.auto_orbit = False
+        self.view_version += 1
         self.yaw = (self.yaw + dyaw) % 360.0
         self.pitch = float(np.clip(self.pitch + dpitch, -5.0, 85.0))
 
     def zoom(self, factor):
+        self.view_version += 1
         self.dist = float(np.clip(self.dist * factor, 1.5, 30.0))
+
+    def reset(self):
+        self.view_version += 1
+        self.yaw, self.pitch, self.dist = self.HOME
 
     # ---- drawing ----
     def _draw_rings(self, img):
@@ -163,7 +170,7 @@ class CloudRenderer:
         img = np.empty((self.h, self.w, 3), np.uint8)
         img[:] = self.bg
         if len(pts):
-            low = float(np.percentile(pts[:, 2], 2))
+            low = float(np.percentile(pts[::8, 2], 2))
             self._ground_z = 0.9 * self._ground_z + 0.1 * low
         self._draw_rings(img)
         if len(pts) == 0:
@@ -173,17 +180,19 @@ class CloudRenderer:
         ok = (z > 0.2) & (u >= 0) & (u < self.w - 1) & (v >= 0) & (v < self.h - 1)
         if not ok.any():
             return img
-        u, v, z, p = u[ok].astype(np.int32), v[ok].astype(np.int32), z[ok], pts[ok]
+        u, v, z, pz = u[ok].astype(np.int32), v[ok].astype(np.int32), z[ok], pts[ok, 2]
 
         # colour by height relative to the ground estimate, fade with distance from the camera
-        h_norm = np.clip((p[:, 2] - self._ground_z) / 2.5, 0, 1)
-        col = HEIGHT_LUT[(h_norm * 255).astype(np.uint8)].astype(np.float32)
-        fade = np.clip(1.25 - (z - self.dist) / (self.dist * 2.2 + 4), 0.35, 1.0)[:, None]
-        col = (col * fade).astype(np.uint8)
+        h_norm = np.clip((pz - self._ground_z) / 2.5, 0, 1)
+        col = HEIGHT_LUT[(h_norm * 255).astype(np.uint8)]
+        fade = np.clip(1.25 - (z - self.dist) / (self.dist * 2.2 + 4), 0.35, 1.0)
+        col = (col.astype(np.uint16) * (fade * 256).astype(np.uint16)[:, None] >> 8).astype(np.uint8)
 
         # far points first so near points win the pixel
-        order = np.argsort(-z)
-        img[v[order], u[order]] = col[order]
+        # (depth quantised to uint16 so numpy uses its radix sort, ~8x faster than a float argsort)
+        dq = np.clip(z * (65535.0 / 60.0), 0, 65535).astype(np.uint16)
+        order = np.argsort(65535 - dq, kind="stable")
+        img.reshape(-1, 3)[(v * self.w + u)[order]] = col[order]
         # grow each point to ~2x2 px so the cloud reads as surfaces, not dust
         img = cv2.dilate(img, np.ones((2, 2), np.uint8))
 

@@ -6,7 +6,7 @@ A local web dashboard that shows the rover's perception stack live on one screen
 |---|---|---|
 | **LiDAR overlay** | Mid-360 points projected onto the OAK-D image, coloured by range | `perception/ros2_ws/src/aurora_lidar_overlay` |
 | **Object detection** | YOLO boxes with stereo distances, drop/slope edge, PROCEED / CAUTION / STOP, depth heatmap inset | `perception/OAKD-obj-detec.py` (`Perception`, `annotate`) |
-| **LiDAR point cloud** | Live 3D render of the Mid-360 cloud, last 8 s of returns, colour = height. Drag to rotate, scroll to zoom, double-click for auto-orbit | `cloud_render.py` |
+| **LiDAR point cloud** | Live 3D render of the Mid-360 cloud, last 8 s of returns, colour = height. Drag to rotate, scroll to zoom, double-click to reset the view (the cloud does not spin on its own) | `cloud_render.py` |
 
 Each panel has a metrics strip (frame rates, latency, nearest distance, LiDAR points/s, 60 s trend lines). The enlarged detection view also lists the decision thresholds read from `src/decision.py` / `src/metric_terrain.py`.
 
