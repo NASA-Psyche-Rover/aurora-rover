@@ -42,9 +42,6 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, m
 .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .media { position: relative; background: #05080c; cursor: zoom-in; aspect-ratio: 4 / 3; flex: none; overflow: hidden; }
 .media img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
-.media canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-.media .nosig { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font: 14px var(--mono); color: var(--muted); pointer-events: none; }
-.media.cloud.nosignal .nosig { display: flex; }
 .media.cloud { cursor: grab; } .media.cloud.drag { cursor: grabbing; }
 .inset { position: absolute; right: 8px; bottom: 8px; width: 30%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; }
 .inset span { position: absolute; left: 6px; top: 4px; font: 10px var(--mono); color: #fff; text-shadow: 0 0 3px #000; }
@@ -153,7 +150,7 @@ main.zoomed .inset { width: 22%; }
     <div class="panel-head"><h2>LiDAR point cloud</h2><span class="tag">live 3D</span>
       <div class="live off" id="live-cloud"><span class="dot"></span><span class="t">no signal</span></div></div>
     <div class="body">
-      <div class="media cloud"><canvas id="cloud-gl" aria-label="3D LiDAR point cloud"></canvas><div class="nosig" id="cloud-msg">NO LIDAR SIGNAL</div></div>
+      <div class="media cloud"><img data-src="/stream/cloud" alt="3D LiDAR point cloud"></div>
       <div class="metrics">
         <div class="tiles">
           <div class="tile"><div class="k">Points shown</div><div class="v" id="m-c-pts">–</div></div>
@@ -198,198 +195,24 @@ addEventListener("keydown", e => {
 // open straight into a zoomed panel with e.g. /#2
 if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]);
 
-// ---- LiDAR cloud: drawn in the browser with WebGL ----
-// The server only streams points (/api/cloud); camera, colours and drawing are local,
-// so dragging never waits on the network or the Jetson CPU.
-const cloud = document.querySelector(".media.cloud");
-const glc = $("cloud-gl");
-const gl = glc.getContext("webgl", { antialias: false, alpha: false });
-let cloudFps = 0, cloudWindowMs = 8000;
-const HOME = { yaw: 200, pitch: 24, dist: 7 };
-const cam = { ...HOME };
-const TARGET = [2, 0, 0.2], FOV_X = 55 * Math.PI / 180, QSCALE = 800;
-let dirty = true, ground = -0.3, groundAt = 0, seq = 0, drag = null;
-let softGL = false;   // software renderer (no GPU access in this browser): send and draw fewer points
-const MAX_POINTS = () => softGL ? 25000 : 100000;
-const frames = [];   // { t, n, vbo, z } -- t = estimated capture time (performance.now() ms)
-
-function compile(vs, fs) {
-  const prog = gl.createProgram();
-  for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
-    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
-    gl.attachShader(prog, sh);
-  }
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-  const u = {}, a = {};
-  for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS); i++) { const n = gl.getActiveUniform(prog, i).name; u[n] = gl.getUniformLocation(prog, n); }
-  for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_ATTRIBUTES); i++) { const n = gl.getActiveAttrib(prog, i).name; a[n] = gl.getAttribLocation(prog, n); }
-  return { prog, u, a };
-}
-let ptsP, flatP, ringBuf, ringN, arrowBuf, arrowN, markBuf;
-function initGL() {
-  // height ramp (cyan -> green -> yellow -> orange) and distance fade
-  ptsP = compile(`
-    attribute vec3 p; uniform mat4 uVP; uniform float uGround, uDist, uPx;
-    varying vec3 vCol;
-    vec3 ramp(float t) {
-      vec3 a = vec3(.15,.85,.95), b = vec3(.35,.95,.35), c = vec3(.95,.90,.20), d = vec3(1.,.50,.10);
-      return t < .33 ? mix(a, b, t / .33) : t < .66 ? mix(b, c, (t - .33) / .33) : mix(c, d, (t - .66) / .34);
-    }
-    void main() {
-      vec3 w = p / ${QSCALE.toFixed(1)};
-      gl_Position = uVP * vec4(w, 1.);
-      float fade = clamp(1.25 - (gl_Position.w - uDist) / (uDist * 2.2 + 4.), .35, 1.);
-      vCol = ramp(clamp((w.z - uGround) / 2.5, 0., 1.)) * fade;
-      gl_PointSize = uPx;
-    }`, `precision mediump float; varying vec3 vCol; void main() { gl_FragColor = vec4(vCol, 1.); }`);
-  flatP = compile(`
-    attribute vec3 p; uniform mat4 uVP; uniform float uGround, uPx;
-    void main() { gl_Position = uVP * vec4(p.xy, p.z + uGround, 1.); gl_PointSize = uPx; }`,
-    `precision mediump float; uniform vec4 uColor; uniform bool uRound;
-     void main() { if (uRound && length(gl_PointCoord - .5) > .5) discard; gl_FragColor = uColor; }`);
-  const buf = arr => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
-  const ring = [];   // range rings at z = 0, shifted onto the floor by uGround
-  for (const r of [1, 2, 4, 8]) for (let i = 0; i < 120; i++) {
-    const a0 = i / 120 * 2 * Math.PI, a1 = (i + 1) / 120 * 2 * Math.PI;
-    ring.push(r * Math.cos(a0), r * Math.sin(a0), 0, r * Math.cos(a1), r * Math.sin(a1), 0);
-  }
-  ringBuf = buf(ring); ringN = ring.length / 3;
-  const w = 0.04, hw = 0.12;   // forward arrow lying on the floor: shaft + head
-  const arrow = [0, -w, 0, 0.95, -w, 0, 0.95, w, 0,  0, -w, 0, 0.95, w, 0, 0, w, 0,  0.95, -hw, 0, 1.25, 0, 0, 0.95, hw, 0];
-  arrowBuf = buf(arrow); arrowN = arrow.length / 3;
-  markBuf = buf([0, 0, 0]);
-  gl.enable(gl.DEPTH_TEST);
-  const info = gl.getExtension("WEBGL_debug_renderer_info");
-  softGL = /swiftshader|llvmpipe|software/i.test(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "");
-}
-
-// ---- camera: orbit around TARGET; yaw 0 looks along the LiDAR's +x from behind ----
-const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-const unit = a => { const l = Math.hypot(...a) || 1; return a.map(v => v / l); };
-function viewProj(aspect) {
-  const yaw = cam.yaw * Math.PI / 180, pit = cam.pitch * Math.PI / 180;
-  const ed = [Math.cos(pit) * Math.cos(yaw), Math.cos(pit) * Math.sin(yaw), Math.sin(pit)];
-  const eye = TARGET.map((t, i) => t + ed[i] * cam.dist);
-  const fwd = ed.map(v => -v), right = unit(cross(fwd, [0, 0, 1])), up = cross(right, fwd);
-  // column-major view matrix: rows are right, up, -fwd, with the eye folded into the translation
-  const V = [right[0], up[0], -fwd[0], 0,  right[1], up[1], -fwd[1], 0,  right[2], up[2], -fwd[2], 0,
-             -dot(right, eye), -dot(up, eye), dot(fwd, eye), 1];
-  const fx = 1 / Math.tan(FOV_X / 2), fy = fx * aspect, n = 0.2, f = 100;
-  const P = [fx, 0, 0, 0,  0, fy, 0, 0,  0, 0, (f + n) / (n - f), -1,  0, 0, 2 * f * n / (n - f), 0];
-  const M = new Float32Array(16);
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let v = 0; for (let k = 0; k < 4; k++) v += P[k * 4 + r] * V[c * 4 + k]; M[c * 4 + r] = v; }
-  return M;
-}
-
-function resize() {
-  // software GL is fill-rate bound: draw at 60% resolution and let CSS scale it up
-  const dpr = softGL ? 0.6 : Math.min(devicePixelRatio || 1, 2);
-  const w = Math.max(Math.round(glc.clientWidth * dpr), 2), h = Math.max(Math.round(glc.clientHeight * dpr), 2);
-  if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; dirty = true; }
-  return dpr;
-}
-function updateGround() {   // floor height: 2nd percentile of a sample of recent z, smoothed
-  const now = performance.now();
-  if (now - groundAt < 500) return;
-  groundAt = now;
-  const total = frames.reduce((a, f) => a + f.n, 0), step = Math.max(Math.floor(total / 5000), 1), sample = [];
-  for (const f of frames) for (let i = 0; i < f.n; i += step) sample.push(f.z[i]);
-  if (sample.length < 50) return;
-  sample.sort((a, b) => a - b);
-  ground = 0.9 * ground + 0.1 * sample[Math.floor(sample.length * 0.02)];
-  dirty = true;
-}
-function use(P, attrBuf, n, mode, color, round, px, groundZ, vp) {
-  gl.uniformMatrix4fv(P.u.uVP, false, vp);
-  gl.uniform1f(P.u.uGround, groundZ);
-  gl.uniform1f(P.u.uPx, px);
-  gl.uniform1i(P.u.uRound, round);
-  gl.uniform4f(P.u.uColor, ...color);
-  gl.bindBuffer(gl.ARRAY_BUFFER, attrBuf); gl.vertexAttribPointer(P.a.p, 3, gl.FLOAT, false, 0, 0);
-  gl.drawArrays(mode, 0, n);
-}
-let drawCount = 0, drawSince = performance.now();
-function draw() {
-  const dpr = resize(), now = performance.now();
-  while (frames.length && now - frames[0].t > cloudWindowMs) { gl.deleteBuffer(frames.shift().vbo); dirty = true; }
-  updateGround();
-  if (!dirty) return;   // nothing moved and no new data: leave the last frame on screen
-  dirty = false;
-  gl.viewport(0, 0, glc.width, glc.height);
-  gl.clearColor(14 / 255, 18 / 255, 22 / 255, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  const vp = viewProj(glc.width / glc.height);
-
-  gl.useProgram(flatP.prog);
-  gl.enableVertexAttribArray(flatP.a.p);
-  use(flatP, ringBuf, ringN, gl.LINES, [0.17, 0.2, 0.24, 1], 0, 1, ground, vp);
-  use(flatP, arrowBuf, arrowN, gl.TRIANGLES, [1, 0.7, 0.35, 1], 0, 1, ground, vp);
-
-  gl.useProgram(ptsP.prog);
-  gl.uniformMatrix4fv(ptsP.u.uVP, false, vp);
-  gl.uniform1f(ptsP.u.uGround, ground);
-  gl.uniform1f(ptsP.u.uDist, cam.dist);
-  gl.uniform1f(ptsP.u.uPx, 2.2 * dpr);
-  gl.enableVertexAttribArray(ptsP.a.p);
-    // while dragging on a software renderer, draw a third of each frame so the camera keeps up
-  const share = softGL && drag ? 0.35 : 1;
-  for (const f of frames) { gl.bindBuffer(gl.ARRAY_BUFFER, f.vbo); gl.vertexAttribPointer(ptsP.a.p, 3, gl.SHORT, false, 0, 0); gl.drawArrays(gl.POINTS, 0, Math.floor(f.n * share)); }
-
-  gl.useProgram(flatP.prog);   // sensor marker on top: white dot at the origin
-  gl.disable(gl.DEPTH_TEST);
-  use(flatP, markBuf, 1, gl.POINTS, [1, 1, 1, 1], 1, 12 * dpr, 0, vp);
-  gl.enable(gl.DEPTH_TEST);
-
-  drawCount++;
-  if (now - drawSince > 1000) { cloudFps = drawCount * 1000 / (now - drawSince); drawCount = 0; drawSince = now; }
-}
-function loop() { draw(); requestAnimationFrame(loop); }
-
-// ---- data: long-poll /api/cloud for frames newer than `seq` ----
-async function pull() {
-  try {
-    const buf = await (await fetch(`/api/cloud?since=${seq}&max=${MAX_POINTS()}`, { cache: "no-store" })).arrayBuffer();
-    const dv = new DataView(buf), now = performance.now();
-    const latest = dv.getUint32(0, true), n = dv.getUint32(4, true);
-    let off = 8;
-    for (let i = 0; i < n; i++) {
-      const np = dv.getUint32(off + 4, true), age = dv.getUint32(off + 8, true);
-      off += 12;
-      const q = new Int16Array(buf, off, np * 3); off += np * 6;
-      const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, q, gl.STATIC_DRAW);
-      const z = new Float32Array(np); for (let k = 0; k < np; k++) z[k] = q[k * 3 + 2] / QSCALE;
-      frames.push({ t: now - age, n: np, vbo, z });
-      dirty = true;
-    }
-    seq = latest;
-  } catch (e) { await new Promise(r => setTimeout(r, 500)); }   // server restarting
-  setTimeout(pull, 0);
-}
-
-if (!gl) {
-  $("cloud-msg").textContent = "WebGL not available in this browser"; cloud.classList.add("nosignal");
-} else {
-  initGL(); new ResizeObserver(() => { dirty = true; }).observe(glc); loop(); pull();
-}
-
 // ---- cloud camera: drag = rotate, wheel = zoom, double-click = reset view ----
+const cloud = document.querySelector(".media.cloud");
+let drag = null, pending = { dyaw: 0, dpitch: 0 }, sendTimer = null;
+const post = body => fetch("/api/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+function flush() { sendTimer = null; if (pending.dyaw || pending.dpitch) { post(pending); pending = { dyaw: 0, dpitch: 0 }; } }
 cloud.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; cloud.setPointerCapture(e.pointerId); cloud.classList.add("drag"); });
 cloud.addEventListener("pointermove", e => {
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag = { x: e.clientX, y: e.clientY };
   if (Math.abs(dx) + Math.abs(dy) > 0) moved = true;
-  cam.yaw = (cam.yaw - dx * 0.35 + 360) % 360;
-  cam.pitch = Math.min(Math.max(cam.pitch + dy * 0.3, -5), 85);
-  dirty = true;
+  pending.dyaw -= dx * 0.35; pending.dpitch += dy * 0.3;
+  if (!sendTimer) sendTimer = setTimeout(flush, 50);
 });
 const endDrag = () => { drag = null; cloud.classList.remove("drag"); setTimeout(() => { moved = false; }, 0); };
 cloud.addEventListener("pointerup", endDrag); cloud.addEventListener("pointercancel", endDrag);
-cloud.addEventListener("wheel", e => { e.preventDefault(); cam.dist = Math.min(Math.max(cam.dist * (e.deltaY > 0 ? 1.1 : 0.9), 1.5), 30); dirty = true; }, { passive: false });
-cloud.addEventListener("dblclick", () => { Object.assign(cam, HOME); dirty = true; });
+cloud.addEventListener("wheel", e => { e.preventDefault(); post({ zoom: e.deltaY > 0 ? 1.1 : 0.9 }); }, { passive: false });
+cloud.addEventListener("dblclick", () => post({ reset: true }));
 
 // ---- sparklines: last 60 s of samples, drawn client-side ----
 const HIST = {}, HIST_MAX = 120;
@@ -416,7 +239,7 @@ function trends(m) {
   pushHist("near", d.online && d.hazard_m !== undefined ? d.hazard_m : null);
   pushHist("lat", d.online ? d.latency_ms ?? null : null);
   pushHist("c-pps", m.cloud.online ? m.cloud.points_per_s : null);
-  pushHist("c-fps", m.cloud.online ? cloudFps : null);
+  pushHist("c-fps", m.cloud.online ? m.cloud.render_fps : null);
   const last = (k, f) => { const a = HIST[k]; const v = a && a[a.length - 1]; return v === null || v === undefined ? "–" : f(v); };
   $("t-ov-fps").textContent = last("ov-fps", v => v.toFixed(0) + " fps");
   $("t-ov-pps").textContent = last("ov-pps", v => (v / 1000).toFixed(0) + "k /s");
@@ -440,9 +263,7 @@ function render(m) {
   const d = m.detection || {};
   setLive("live-overlay", m.overlay.online, m.overlay.fps);
   setLive("live-detection", d.online, d.fps);
-  setLive("live-cloud", m.cloud.online, cloudFps);
-  if (gl) cloud.classList.toggle("nosignal", !m.cloud.online);
-  cloudWindowMs = m.cloud.window_s * 1000;
+  setLive("live-cloud", m.cloud.online, m.cloud.render_fps);
 
   setTile("m-ov-fps", fmt(m.overlay.fps, 0), "fps");
   setTile("m-ov-hz", fmt(m.cloud.lidar_hz, 0), "Hz");
@@ -471,10 +292,9 @@ function render(m) {
     ["Path corridor", `± ${th.corridor_half_width_m} m`],
   ].map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`).join("");
 
-  const shown = frames.reduce((a, f) => a + f.n, 0);
-  setTile("m-c-pts", shown ? (shown / 1000).toFixed(0) + "k" : "–", "");
+  setTile("m-c-pts", m.cloud.points_shown ? (m.cloud.points_shown / 1000).toFixed(0) + "k" : "–", "");
   setTile("m-c-win", fmt(m.cloud.window_s, 0), "s");
-  setTile("m-c-fps", fmt(cloudFps, 0), "fps");
+  setTile("m-c-fps", fmt(m.cloud.render_fps, 0), "fps");
 
   trends(m);
 

@@ -8,8 +8,9 @@ streams, and serves them with Flask on http://localhost:8080:
   /stream/overlay    LiDAR points drawn on the OAK-D image (from aurora_lidar_overlay)
   /stream/detection  YOLO boxes + metric distances + drop/slope edge
   /stream/depth      the metric distance heatmap (inset on the detection panel)
-  /api/cloud         binary LiDAR frames (?since=<seq>); the browser draws them with WebGL
+  /stream/cloud      3D render of the live Livox point cloud (orbit camera, moved by dragging)
   /api/metrics       JSON for the metrics strips
+  /api/view          POST {dyaw, dpitch, zoom, reset} to steer the cloud camera
 
 It never opens a sensor itself, so it works on live drivers or on a replayed
 bag alike. Detection reuses perception/OAKD-obj-detec.py (Perception,
@@ -47,10 +48,11 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 
-from cloud_render import CloudAccumulator
+from cloud_render import CloudAccumulator, CloudRenderer
 
 JPEG_QUALITY = 80
 STALE_S = 2.0            # a panel with no new data for this long shows NO SIGNAL
+CLOUD_FPS = 12
 
 
 def load_detection_module():
@@ -114,8 +116,11 @@ class Channel:
             yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
 
 
-def encode(img, quality=JPEG_QUALITY):
-    return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].tobytes()
+def encode(img, quality=JPEG_QUALITY, sharp_colour=False):
+    params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    if sharp_colour:   # full-resolution chroma: 4:2:0 smears the 1-2 px coloured points of the cloud
+        params += [cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
+    return cv2.imencode(".jpg", img, params)[1].tobytes()
 
 
 class Dashboard(Node):
@@ -127,12 +132,14 @@ class Dashboard(Node):
             "overlay": Channel(no_signal_jpeg("NO OVERLAY SIGNAL")),
             "detection": Channel(no_signal_jpeg("NO CAMERA SIGNAL")),
             "depth": Channel(no_signal_jpeg("NO DEPTH", (320, 240))),
+            "cloud": Channel(no_signal_jpeg("NO LIDAR SIGNAL", (960, 720))),
         }
         self.cloud_acc = CloudAccumulator(window_s=args.cloud_window, max_points=100_000)
+        self.cloud_renderer = CloudRenderer()
         self.det_state = {}       # latest detection result summary for /api/metrics
         self.det_lock = threading.Lock()
         self.K = None
-        self._rgb = self._depth = None
+        self._rgb_msg = self._depth_msg = None   # raw messages; converted by the detection thread when it needs them
         self._rgb_n = 0
         self._det_stop = threading.Event()
 
@@ -143,6 +150,7 @@ class Dashboard(Node):
         self.create_subscription(PointCloud2, args.lidar_topic, self.on_cloud, qos_profile_sensor_data)
 
         threading.Thread(target=self.detection_loop, daemon=True).start()
+        threading.Thread(target=self.cloud_loop, daemon=True).start()
         self.get_logger().info("dashboard subscribed; waiting for sensor topics")
 
     # ---------------- ROS callbacks (cheap: store / encode only) ----------------
@@ -151,11 +159,11 @@ class Dashboard(Node):
         self.channels["overlay"].publish(encode(img))
 
     def on_rgb(self, msg):
-        self._rgb = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        self._rgb_msg = msg
         self._rgb_n += 1
 
     def on_depth(self, msg):
-        self._depth = self.bridge.imgmsg_to_cv2(msg, "passthrough")   # uint16 mm
+        self._depth_msg = msg
 
     def on_info(self, msg):
         if self.K is None:
@@ -176,11 +184,13 @@ class Dashboard(Node):
         t_prev = time.time()
         frame_s = 1 / 30
         while not self._det_stop.is_set():
-            rgb, depth, K = self._rgb, self._depth, self.K
-            if rgb is None or depth is None or K is None or self._rgb_n == last_n:
+            rgb_msg, depth_msg, K, n = self._rgb_msg, self._depth_msg, self.K, self._rgb_n
+            if rgb_msg is None or depth_msg is None or K is None or n == last_n:
                 time.sleep(0.01)
                 continue
-            last_n = self._rgb_n
+            last_n = n
+            rgb = self.bridge.imgmsg_to_cv2(rgb_msg, "bgr8")
+            depth = self.bridge.imgmsg_to_cv2(depth_msg, "passthrough")   # uint16 mm
             if perception is None:
                 perception = det.Perception(detector, K, (320, 240))
             try:
@@ -223,12 +233,26 @@ class Dashboard(Node):
                     "fps": round(1.0 / frame_s, 1), "latency_ms": round(step_s * 1000),
                 }
 
+    # ---------------- cloud render thread ----------------
+    def cloud_loop(self):
+        period = 1.0 / CLOUD_FPS
+        seen = None
+        while not self._det_stop.is_set():
+            t0 = time.time()
+            state = (self.cloud_acc.version, self.cloud_renderer.view_version)
+            # draw only when there is new LiDAR data or the camera moved
+            if state != seen and self.cloud_acc.age_s() is not None and self.cloud_acc.age_s() < STALE_S:
+                seen = state
+                pts, age = self.cloud_acc.points(with_age=True)
+                img = self.cloud_renderer.render(pts, age, self.cloud_acc.window_s)
+                self.channels["cloud"].publish(encode(img, 80, sharp_colour=True))
+            time.sleep(max(period - (time.time() - t0), 0.005))
+
     # ---------------- metrics ----------------
     def metrics(self):
         det = self.det
         ch = self.channels
         msgs_hz, pts_hz = self.cloud_acc.rates()
-        cloud_age = self.cloud_acc.age_s()
         with self.det_lock:
             d = dict(self.det_state)
         d.update(online=ch["detection"].online())
@@ -236,9 +260,9 @@ class Dashboard(Node):
             "time": time.time(),
             "overlay": {"online": ch["overlay"].online(), "fps": ch["overlay"].fps()},
             "detection": d,
-            "cloud": {"online": cloud_age is not None and cloud_age < STALE_S,
+            "cloud": {"online": ch["cloud"].online(), "render_fps": ch["cloud"].fps(),
                       "lidar_hz": round(msgs_hz, 1), "points_per_s": int(pts_hz),
-                      "points_shown": self.cloud_acc.count(), "window_s": self.cloud_acc.window_s},
+                      "points_shown": self.cloud_acc.n_points(), "window_s": self.cloud_acc.window_s},
             "thresholds": {
                 "object_stop_m": det.STOP_DISTANCE_M, "object_caution_m": det.CAUTION_DISTANCE_M,
                 "drop_stop_m": det.TERRAIN_STOP_DISTANCE_M, "drop_caution_m": det.TERRAIN_CAUTION_DISTANCE_M,
@@ -274,17 +298,17 @@ def make_app(node):
     def metrics():
         return jsonify(node.metrics())
 
-    @app.get("/api/cloud")
-    def cloud():
-        since = request.args.get("since", 0, type=int)
-        # long-poll: hold the request until a newer frame lands (or 0.5 s), so
-        # the browser gets data as it arrives without hammering the server
-        deadline = time.time() + 0.5
-        while node.cloud_acc.version <= since and time.time() < deadline:
-            time.sleep(0.01)
-        limit = max(request.args.get("max", 0, type=int), 1000) or None   # clients on software GL ask for fewer points
-        return Response(node.cloud_acc.pack(since, max_points=limit), mimetype="application/octet-stream",
-                        headers={"Cache-Control": "no-store"})
+    @app.post("/api/view")
+    def view():
+        body = request.get_json(silent=True) or {}
+        r = node.cloud_renderer
+        if body.get("reset"):
+            r.reset()
+        if body.get("dyaw") or body.get("dpitch"):
+            r.rotate(float(body.get("dyaw", 0)), float(body.get("dpitch", 0)))
+        if body.get("zoom"):
+            r.zoom(float(body["zoom"]))
+        return jsonify(ok=True)
 
     return app
 
