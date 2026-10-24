@@ -76,6 +76,22 @@ start overlay "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash;
   image_topic:=$IMG camera_info_topic:=$INFO lidar_topic:=$LIDAR output_topic:=$OUT \
   extrinsic_yaml:=$EXTR intrinsic_yaml:=$INTR invert_extrinsic:=false use_tf:=false color_by:=depth skip:=1"
 sleep 5
-[ "${NO_VIEWER:-0}" = 1 ] || start viewer "exec ros2 run rqt_image_view rqt_image_view $OUT"
+WAIT_PID="${PIDS[-1]}"
+if [ "${DASHBOARD:-0}" = 1 ]; then
+  # Web dashboard (dashboard/run_dashboard.sh sets this): serves the overlay, detection and point-cloud panels.
+  DASH="$PERCEPTION/../dashboard/server.py"
+  PORT="${DASHBOARD_PORT:-8080}"
+  echo "[run] starting dashboard on http://127.0.0.1:$PORT"
+  start dashboard "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec python3 $DASH --port $PORT --overlay-topic $OUT ${DASHBOARD_ARGS:-}"
+  WAIT_PID="${PIDS[-1]}"
+  for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/api/metrics" >/dev/null 2>&1 && break; sleep 1; done
+  if [ "${KIOSK:-1}" = 1 ]; then   # KIOSK=0 opens a normal browser window instead
+    start browser "exec chromium-browser --enable-unsafe-swiftshader --kiosk --noerrdialogs --disable-infobars --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
+  elif [ "${NO_BROWSER:-0}" != 1 ]; then
+    start browser "exec chromium-browser --enable-unsafe-swiftshader --user-data-dir=$HOME/snap/chromium/common/aurora-dashboard http://127.0.0.1:$PORT"
+  fi
+elif [ "${NO_VIEWER:-0}" != 1 ]; then
+  start viewer "exec ros2 run rqt_image_view rqt_image_view $OUT"
+fi
 echo "[run] running. Logs in $LOGDIR. Ctrl+C to stop."
-wait "${PIDS[-1]}"
+wait "$WAIT_PID"

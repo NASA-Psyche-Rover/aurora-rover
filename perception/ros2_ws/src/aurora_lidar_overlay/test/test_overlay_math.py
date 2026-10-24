@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import cv2
 import numpy as np
 import pytest
 
@@ -172,3 +173,44 @@ def test_skip_reduces_point_count_drawn():
     full_count = int(np.count_nonzero(out_full.sum(axis=2)))
     skipped_count = int(np.count_nonzero(out_skipped.sum(axis=2)))
     assert skipped_count <= full_count
+
+
+def _scene(n=3000, seed=3):
+    rng = np.random.default_rng(seed)
+    xyz = np.c_[rng.uniform(-2, 2, n), rng.uniform(-1.5, 1.5, n), rng.uniform(0.5, 14, n)]
+    K = np.array([[520.0, 0, 322.0], [0, 518.0, 241.0], [0, 0, 1.0]])
+    return xyz, K
+
+
+def test_pinhole_fast_path_matches_cv2_projection():
+    xyz, K = _scene()
+    T = np.eye(4)
+    T[:3, :3] = cv2.Rodrigues(np.array([0.02, -0.03, 0.01]))[0]
+    T[:3, 3] = [0.05, -0.02, 0.1]
+    fast, front_f, _ = overlay_math.project_points(xyz, T, K, np.zeros(5))
+    ref, front_r, _ = overlay_math.project_points(xyz, T, K, np.full(5, 1e-15))   # non-zero D takes the cv2 path
+    assert np.array_equal(front_f, front_r)
+    assert np.abs(fast[front_f] - ref[front_r]).max() < 1e-6
+
+
+def test_disk_drawing_matches_per_point_circles():
+    xyz, K = _scene()
+    img = np.random.default_rng(0).integers(0, 255, (480, 640, 3), dtype=np.uint8)
+    out = overlay_math.draw_overlay(img, xyz, np.eye(4), K, np.zeros(5))
+
+    # reference: the original per-point cv2.circle painter's algorithm
+    pixels, in_front, cam = overlay_math.project_points(xyz, np.eye(4), K, np.zeros(5))
+    ok = in_front & overlay_math.in_bounds_mask(pixels, 640, 480)
+    px, cam_xyz, xyz_v = pixels[ok], cam[ok], xyz[ok]
+    colors = overlay_math._turbo_colors(cam_xyz[:, 2], 0.3, 25.0)
+    rng_ = np.linalg.norm(xyz_v, axis=1)
+    order = np.argsort(-rng_)
+    px, colors, rng_ = px[order], colors[order], rng_[order]
+    sizes = np.clip(np.round(1 + np.clip((25.0 - rng_) / 24.7, 0, 1) * 5).astype(int), 1, None)
+    ref = img.copy()
+    u = np.clip(np.round(px[:, 0]).astype(int), 0, 639)
+    v = np.clip(np.round(px[:, 1]).astype(int), 0, 479)
+    ref[v[sizes <= 1], u[sizes <= 1]] = colors[sizes <= 1]
+    for i in np.where(sizes > 1)[0]:
+        cv2.circle(ref, (int(u[i]), int(v[i])), int(sizes[i]), tuple(int(c) for c in colors[i]), -1)
+    assert np.array_equal(out, ref)

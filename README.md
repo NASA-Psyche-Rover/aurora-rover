@@ -42,6 +42,7 @@ AURORA prototypes a rover that can **see** the terrain and **move** across it on
 
 ```text
 perception/   Object detection, stereo depth, terrain risk, mapping & navigation decisions (Python)
+dashboard/    Live web dashboard: LiDAR overlay, object detection and 3D point cloud on one screen
 electrical/   Cubli KiCad schematics + ESP32 bring-up firmware
 ```
 

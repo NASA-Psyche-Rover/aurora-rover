@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AURORA Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #151b23; --panel-2: #1b232d; --line: #2a3441;
+  --text: #e6edf3; --muted: #8b98a8; --dim: #5f6b7a;
+  --accent: #ff7a1a;                       /* NASA-ish orange, used sparingly */
+  --go: #3fb950; --caution: #f5b83d; --stop: #f85149;
+  --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+       display: flex; flex-direction: column; overflow: hidden; }
+
+header { display: flex; align-items: center; gap: 20px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex: none; }
+.brand { font-weight: 700; letter-spacing: .14em; font-size: 15px; }
+.brand b { color: var(--accent); }
+.sub { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+.spacer { flex: 1; }
+.badge { font: 700 13px var(--mono); letter-spacing: .08em; padding: 5px 14px; border-radius: 6px; border: 1px solid currentColor; }
+.badge.PROCEED { color: var(--go); } .badge.CAUTION { color: var(--caution); } .badge.STOP { color: var(--stop); }
+.badge.NONE { color: var(--dim); }
+#clock { font: 12px var(--mono); color: var(--muted); min-width: 64px; text-align: right; }
+.hint { color: var(--dim); font-size: 12px; }
+
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 14px 20px 18px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.panel-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
+.panel-head h2 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.panel-head .tag { color: var(--dim); font: 11px var(--mono); }
+.live { margin-left: auto; font: 11px var(--mono); color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+.live.on .dot { background: var(--go); box-shadow: 0 0 6px var(--go); }
+.live.off { color: var(--stop); } .live.off .dot { background: var(--stop); }
+
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.media { position: relative; background: #05080c; cursor: zoom-in; aspect-ratio: 4 / 3; flex: none; overflow: hidden; }
+.media img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
+.media.cloud { cursor: grab; } .media.cloud.drag { cursor: grabbing; }
+.inset { position: absolute; right: 8px; bottom: 8px; width: 30%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; }
+.inset span { position: absolute; left: 6px; top: 4px; font: 10px var(--mono); color: #fff; text-shadow: 0 0 3px #000; }
+.inset img { aspect-ratio: 4 / 3; }
+
+.metrics { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; overflow: auto; flex: 1; min-height: 0; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+.tile .k { color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.tile .v { font: 600 20px var(--mono); margin-top: 2px; white-space: nowrap; }
+.tile .v small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.decision { display: flex; align-items: baseline; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); border-left: 4px solid var(--dim); }
+.decision .d { font: 700 22px var(--mono); letter-spacing: .06em; }
+.decision .r { color: var(--muted); font-size: 12.5px; }
+.decision.PROCEED { border-color: var(--go); } .decision.PROCEED .d { color: var(--go); }
+.decision.CAUTION { border-color: var(--caution); } .decision.CAUTION .d { color: var(--caution); }
+.decision.STOP { border-color: var(--stop); } .decision.STOP .d { color: var(--stop); }
+.list { font: 12.5px var(--mono); display: flex; flex-direction: column; gap: 3px; }
+.list .row { display: flex; justify-content: space-between; gap: 10px; color: var(--text); }
+.list .row.off { color: var(--dim); }
+.list .none { color: var(--dim); }
+.cap { color: var(--dim); font-size: 12px; }
+.sect { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: -6px; }
+.extra { display: none; }
+.trends { display: flex; flex-direction: column; gap: 10px; }
+.trend { background: var(--panel-2); border-radius: 8px; padding: 8px 10px 6px; }
+.trend .k { color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; display: flex; justify-content: space-between; }
+.trend .k span:last-child { font-family: var(--mono); color: var(--text); text-transform: none; letter-spacing: 0; }
+.trend canvas { width: 100%; height: 64px; display: block; margin-top: 4px; }
+
+/* zoomed: one panel fills the screen, media left, metrics right */
+main.zoomed { grid-template-columns: 1fr; }
+main.zoomed .panel { display: none; }
+main.zoomed .panel.zoom { display: flex; }
+main.zoomed .panel.zoom .body { flex-direction: row; }
+main.zoomed .panel.zoom .media { aspect-ratio: auto; flex: 1; min-width: 0; cursor: zoom-out; }
+main.zoomed .panel.zoom .media.cloud { cursor: grab; }
+main.zoomed .panel.zoom .metrics { flex: none; width: 360px; border-left: 1px solid var(--line); }
+main.zoomed .panel.zoom .tiles { grid-template-columns: repeat(2, 1fr); }
+main.zoomed .panel.zoom .extra { display: block; }
+main.zoomed .inset { width: 22%; }
+
+@media (max-width: 1100px) { main { grid-template-columns: 1fr; overflow: auto; } body { overflow: auto; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>AURORA</b> &nbsp;PERCEPTION</div>
+  <div class="sub">Cubli prototype · OAK-D Lite + Livox Mid-360 · Jetson Orin Nano</div>
+  <div class="spacer"></div>
+  <div class="hint" id="hint">click a panel to enlarge · keys 1 2 3 · Esc to return</div>
+  <div class="badge NONE" id="topBadge">NO DATA</div>
+  <div id="clock">--:--:--</div>
+</header>
+
+<main id="grid">
+  <section class="panel" id="p-overlay" data-key="1">
+    <div class="panel-head"><h2>LiDAR overlay</h2><span class="tag">Mid-360 → OAK-D</span>
+      <div class="live off" id="live-overlay"><span class="dot"></span><span class="t">no signal</span></div></div>
+    <div class="body">
+      <div class="media"><img data-src="/stream/overlay" alt="LiDAR points projected onto the camera image"></div>
+      <div class="metrics">
+        <div class="tiles">
+          <div class="tile"><div class="k">Overlay</div><div class="v" id="m-ov-fps">–<small>fps</small></div></div>
+          <div class="tile"><div class="k">LiDAR rate</div><div class="v" id="m-ov-hz">–<small>Hz</small></div></div>
+          <div class="tile"><div class="k">Points</div><div class="v" id="m-ov-pps">–<small>/s</small></div></div>
+        </div>
+        <div class="trends">
+          <div class="trend"><div class="k"><span>Overlay frame rate</span><span id="t-ov-fps">–</span></div><canvas data-trend="ov-fps"></canvas></div>
+          <div class="trend"><div class="k"><span>LiDAR points per second</span><span id="t-ov-pps">–</span></div><canvas data-trend="ov-pps"></canvas></div>
+        </div>
+        <div class="cap">Each LiDAR return is projected into the camera image and coloured by range (near = warm).</div>
+        <div class="extra cap">Projection uses the saved camera–LiDAR extrinsic and the camera intrinsics, so the points land on the object they hit.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-detection" data-key="2">
+    <div class="panel-head"><h2>Object detection</h2><span class="tag" id="det-tag">YOLO + stereo depth</span>
+      <div class="live off" id="live-detection"><span class="dot"></span><span class="t">no signal</span></div></div>
+    <div class="body">
+      <div class="media">
+        <img data-src="/stream/detection" alt="Object detection with distances">
+        <div class="inset"><img data-src="/stream/depth" alt="Depth heatmap"></div>
+      </div>
+      <div class="metrics">
+        <div class="decision NONE" id="decision"><div class="d" id="d-word">–</div><div class="r" id="d-reason">waiting for camera</div></div>
+        <div class="tiles">
+          <div class="tile"><div class="k">Nearest</div><div class="v" id="m-near">–<small>m</small></div></div>
+          <div class="tile"><div class="k">Latency</div><div class="v" id="m-lat">–<small>ms</small></div></div>
+          <div class="tile"><div class="k">Video</div><div class="v" id="m-dfps">–<small>fps</small></div></div>
+        </div>
+        <div><div class="sect" style="margin-bottom:6px" id="det-list-title">Detected objects</div><div class="list" id="objects"><span class="none">none</span></div></div>
+        <div class="trends">
+          <div class="trend"><div class="k"><span>Nearest in path</span><span id="t-near">–</span></div><canvas data-trend="near"></canvas></div>
+          <div class="trend"><div class="k"><span>Detection latency</span><span id="t-lat">–</span></div><canvas data-trend="lat"></canvas></div>
+        </div>
+        <div class="cap" id="terrain">Terrain: –</div>
+        <div class="extra"><div class="sect" style="margin-bottom:6px">Decision thresholds</div>
+          <div class="list" id="thresholds"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-cloud" data-key="3">
+    <div class="panel-head"><h2>LiDAR point cloud</h2><span class="tag">live 3D</span>
+      <div class="live off" id="live-cloud"><span class="dot"></span><span class="t">no signal</span></div></div>
+    <div class="body">
+      <div class="media cloud"><img data-src="/stream/cloud" alt="3D LiDAR point cloud"></div>
+      <div class="metrics">
+        <div class="tiles">
+          <div class="tile"><div class="k">Points shown</div><div class="v" id="m-c-pts">–</div></div>
+          <div class="tile"><div class="k">History</div><div class="v" id="m-c-win">–<small>s</small></div></div>
+          <div class="tile"><div class="k">Render</div><div class="v" id="m-c-fps">–<small>fps</small></div></div>
+        </div>
+        <div class="trends">
+          <div class="trend"><div class="k"><span>Points per second</span><span id="t-c-pps">–</span></div><canvas data-trend="c-pps"></canvas></div>
+          <div class="trend"><div class="k"><span>Render frame rate</span><span id="t-c-fps">–</span></div><canvas data-trend="c-fps"></canvas></div>
+        </div>
+        <div class="cap">Colour = height above ground. Drag to rotate, scroll to zoom, double-click to reset the view. The cloud stays still until you move it. Arrow marks the rover's forward direction.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const grid = $("grid");
+const KEYS = { "1": "p-overlay", "2": "p-detection", "3": "p-cloud" };
+
+// ---- streams: start after load so the page paints first ----
+document.querySelectorAll("img[data-src]").forEach(img => { img.src = img.dataset.src; });
+
+// ---- zoom ----
+let moved = false;
+function zoomTo(id) {
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("zoom", p.id === id));
+  grid.classList.toggle("zoomed", !!id);
+}
+document.querySelectorAll(".panel").forEach(p => {
+  p.querySelector(".media").addEventListener("click", () => {
+    if (moved) { moved = false; return; }
+    zoomTo(grid.classList.contains("zoomed") ? null : p.id);
+  });
+});
+addEventListener("keydown", e => {
+  if (e.key === "Escape" || e.key === "0") zoomTo(null);
+  else if (KEYS[e.key]) zoomTo(KEYS[e.key]);
+});
+
+// open straight into a zoomed panel with e.g. /#2
+if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]);
+
+// ---- cloud camera: drag = rotate, wheel = zoom, double-click = reset view ----
+const cloud = document.querySelector(".media.cloud");
+let drag = null, pending = { dyaw: 0, dpitch: 0 }, sendTimer = null;
+const post = body => fetch("/api/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+function flush() { sendTimer = null; if (pending.dyaw || pending.dpitch) { post(pending); pending = { dyaw: 0, dpitch: 0 }; } }
+cloud.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; cloud.setPointerCapture(e.pointerId); cloud.classList.add("drag"); });
+cloud.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag = { x: e.clientX, y: e.clientY };
+  if (Math.abs(dx) + Math.abs(dy) > 0) moved = true;
+  pending.dyaw -= dx * 0.35; pending.dpitch += dy * 0.3;
+  if (!sendTimer) sendTimer = setTimeout(flush, 50);
+});
+const endDrag = () => { drag = null; cloud.classList.remove("drag"); setTimeout(() => { moved = false; }, 0); };
+cloud.addEventListener("pointerup", endDrag); cloud.addEventListener("pointercancel", endDrag);
+cloud.addEventListener("wheel", e => { e.preventDefault(); post({ zoom: e.deltaY > 0 ? 1.1 : 0.9 }); }, { passive: false });
+cloud.addEventListener("dblclick", () => post({ reset: true }));
+
+// ---- sparklines: last 60 s of samples, drawn client-side ----
+const HIST = {}, HIST_MAX = 120;
+function pushHist(key, v) { const a = HIST[key] || (HIST[key] = []); a.push(v); if (a.length > HIST_MAX) a.shift(); }
+function drawTrend(cv) {
+  const a = HIST[cv.dataset.trend] || [];
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  const vals = a.filter(v => v !== null);
+  if (vals.length < 2) return;
+  const lo = 0, hi = Math.max(...vals) * 1.15 || 1;
+  const x = i => (i / (HIST_MAX - 1)) * w + (w - (a.length - 1) / (HIST_MAX - 1) * w);
+  const y = v => h - 2 - (v - lo) / (hi - lo) * (h - 6);
+  c.strokeStyle = "#2a3441"; c.lineWidth = 1; c.beginPath(); c.moveTo(0, h - 0.5); c.lineTo(w, h - 0.5); c.stroke();
+  c.beginPath(); let pen = false;
+  a.forEach((v, i) => { if (v === null) { pen = false; return; } pen ? c.lineTo(x(i), y(v)) : c.moveTo(x(i), y(v)); pen = true; });
+  c.strokeStyle = "#58a6ff"; c.lineWidth = 1.6; c.lineJoin = "round"; c.stroke();
+}
+function trends(m) {
+  const d = m.detection || {};
+  pushHist("ov-fps", m.overlay.online ? m.overlay.fps : null);
+  pushHist("ov-pps", m.cloud.online ? m.cloud.points_per_s : null);
+  pushHist("near", d.online && d.hazard_m !== undefined ? d.hazard_m : null);
+  pushHist("lat", d.online ? d.latency_ms ?? null : null);
+  pushHist("c-pps", m.cloud.online ? m.cloud.points_per_s : null);
+  pushHist("c-fps", m.cloud.online ? m.cloud.render_fps : null);
+  const last = (k, f) => { const a = HIST[k]; const v = a && a[a.length - 1]; return v === null || v === undefined ? "–" : f(v); };
+  $("t-ov-fps").textContent = last("ov-fps", v => v.toFixed(0) + " fps");
+  $("t-ov-pps").textContent = last("ov-pps", v => (v / 1000).toFixed(0) + "k /s");
+  $("t-near").textContent = last("near", v => v.toFixed(2) + " m");
+  if (d.online && (d.hazard_m === null || d.hazard_m === undefined)) $("t-near").textContent = "path clear";
+  $("t-lat").textContent = last("lat", v => v + " ms");
+  $("t-c-pps").textContent = last("c-pps", v => (v / 1000).toFixed(0) + "k /s");
+  $("t-c-fps").textContent = last("c-fps", v => v.toFixed(0) + " fps");
+  document.querySelectorAll("canvas[data-trend]").forEach(drawTrend);
+}
+
+// ---- metrics ----
+const fmt = (v, d = 1) => (v === null || v === undefined) ? "–" : Number(v).toFixed(d);
+const setTile = (id, val, unit) => { $(id).innerHTML = val + (unit ? `<small>${unit}</small>` : ""); };
+function setLive(id, online, fps) {
+  const el = $(id);
+  el.className = "live " + (online ? "on" : "off");
+  el.querySelector(".t").textContent = online ? `live · ${fmt(fps, 0)} fps` : "no signal";
+}
+function render(m) {
+  const d = m.detection || {};
+  setLive("live-overlay", m.overlay.online, m.overlay.fps);
+  setLive("live-detection", d.online, d.fps);
+  setLive("live-cloud", m.cloud.online, m.cloud.render_fps);
+
+  setTile("m-ov-fps", fmt(m.overlay.fps, 0), "fps");
+  setTile("m-ov-hz", fmt(m.cloud.lidar_hz, 0), "Hz");
+  setTile("m-ov-pps", m.cloud.points_per_s ? (m.cloud.points_per_s / 1000).toFixed(0) + "k" : "–", "/s");
+
+  const word = d.decision || (d.error ? "ERROR" : "–");
+  $("decision").className = "decision " + (d.decision || "NONE");
+  $("d-word").textContent = word;
+  $("d-reason").textContent = d.error || d.reason || (d.online ? "" : "waiting for camera");
+  setTile("m-near", fmt(d.hazard_m, 2), "m");
+  setTile("m-lat", d.latency_ms ?? "–", "ms");
+  setTile("m-dfps", fmt(d.fps, 0), "fps");
+  if (d.detector) $("det-list-title").textContent = d.detector;
+  const objs = d.objects || [];
+  $("objects").innerHTML = objs.length ? objs.map(o =>
+    `<div class="row ${o.in_path ? "" : "off"}"><span>${o.label}${o.in_path ? "" : " (not in path)"}</span><span>${o.dist_m === null ? "no depth" : o.dist_m.toFixed(2) + " m"}</span></div>`
+  ).join("") : `<span class="none">none</span>`;
+  const t = d.terrain;
+  $("terrain").textContent = !t ? "Terrain: –" : !t.ground_found ? "Terrain: ground not found"
+    : t.hazard ? `Terrain: ${t.hazard} at ${t.hazard_m.toFixed(2)} m` : `Terrain: clear (camera ${t.camera_height_m.toFixed(2)} m up)`;
+
+  const th = m.thresholds;
+  $("thresholds").innerHTML = [
+    ["Object STOP", `< ${th.object_stop_m} m`], ["Object CAUTION", `< ${th.object_caution_m} m`],
+    ["Drop / slope STOP", `< ${th.drop_stop_m} m`], ["Drop / slope CAUTION", `< ${th.drop_caution_m} m`],
+    ["Path corridor", `± ${th.corridor_half_width_m} m`],
+  ].map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`).join("");
+
+  setTile("m-c-pts", m.cloud.points_shown ? (m.cloud.points_shown / 1000).toFixed(0) + "k" : "–", "");
+  setTile("m-c-win", fmt(m.cloud.window_s, 0), "s");
+  setTile("m-c-fps", fmt(m.cloud.render_fps, 0), "fps");
+
+  trends(m);
+
+  const tb = $("topBadge");
+  tb.className = "badge " + (d.online && d.decision ? d.decision : "NONE");
+  tb.textContent = d.online && d.decision ? d.decision : "NO DATA";
+}
+async function poll() {
+  try { render(await (await fetch("/api/metrics", { cache: "no-store" })).json()); } catch (e) { /* server restarting */ }
+  setTimeout(poll, 500);
+}
+poll();
+setInterval(() => { $("clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
+</script>
+</body>
+</html>

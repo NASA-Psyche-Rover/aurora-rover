@@ -51,9 +51,27 @@ class ObjectDetector:
             print(f"[ObjectDetector] {', '.join(map(str, candidates))} missing or empty, "
                   f"falling back to {DEFAULT_MODEL_PATH}")
             self.model_path = DEFAULT_MODEL_PATH
-        self.model = YOLO(self.model_path)
+        self.model = self._load(self.model_path)
         self.is_rock_model = self.model_path != DEFAULT_MODEL_PATH
         self.conf = conf
+
+    @staticmethod
+    def _load(model_path):
+        """
+        Load the weights, preferring a TensorRT engine exported next to them.
+
+        An engine (`yolov8n.pt` -> `yolov8n.engine`, see the README) runs the same
+        network about 2.5x faster on the Jetson GPU. It is specific to the device and
+        TensorRT version, so it is never committed; if it is missing or fails to load
+        this falls back to the .pt file.
+        """
+        engine = Path(model_path).with_suffix(".engine")
+        if engine.exists() and engine.stat().st_mtime >= Path(model_path).stat().st_mtime:
+            try:
+                return YOLO(str(engine), task="detect")
+            except Exception as e:
+                print(f"[ObjectDetector] {engine} failed to load ({e!r}), using {model_path}")
+        return YOLO(model_path)
 
     def detect(self, frame):
         """
@@ -68,12 +86,13 @@ class ObjectDetector:
         results = self.model.predict(frame, conf=self.conf, verbose=False)
         detections = []
         for r in results:
-            for i, box in enumerate(r.boxes.xyxy):
-                x1, y1, x2, y2 = box.tolist()
+            # one device->host copy for the whole result rather than a sync per box and field
+            data = r.boxes.data.cpu().numpy()      # rows of x1, y1, x2, y2, conf, class
+            for x1, y1, x2, y2, conf, cls in data:
                 detections.append(Detection(
                     xyxy=(int(x1), int(y1), int(x2), int(y2)),
-                    class_id=int(r.boxes.cls[i].item()),
-                    conf=float(r.boxes.conf[i].item()),
+                    class_id=int(cls),
+                    conf=float(conf),
                 ))
         return detections
 
