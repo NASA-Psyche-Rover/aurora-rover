@@ -119,6 +119,17 @@ Produces `models/best.pt`; `Detector` picks it up automatically and only falls b
 the pretrained `yolov8n.pt` if `best.pt` is missing or empty (it currently is, pending a
 training run — see [Current Status](#current-status)).
 
+**Speed up detection on the Jetson** with a TensorRT FP16 engine. The detector uses
+`models/<name>.engine` automatically when it sits next to the weights and is newer than them,
+and falls back to the `.pt` file otherwise. The engine is built for this device and TensorRT
+version, so it is git-ignored; rebuild it after changing weights or JetPack (stop other GPU
+work first, the build takes several minutes and ~3 GB):
+```bash
+python3 -c "from ultralytics import YOLO; YOLO('models/yolov8n.pt').export(format='engine', half=True, imgsz=(480, 640), batch=1, device=0, workspace=2)"
+```
+It needs the `onnx` and `onnxslim` packages for the export only. On the dev Jetson, the same
+9 detections as PyTorch at about 7 ms of inference instead of 19 ms (idle) to 35 ms (loaded).
+
 ## Design decisions
 
 - **YOLOv8n**: balance of accuracy and inference speed, small enough for CPU-only

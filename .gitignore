@@ -223,3 +223,6 @@ _autosave-*
 .DS_Store
 Icon?
 *.save
+
+# TensorRT engines are built per device / TensorRT version (see perception/README.md)
+perception/models/*.engine
