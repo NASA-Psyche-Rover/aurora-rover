@@ -81,14 +81,21 @@ def project_points(xyz_lidar, T_cam_lidar, K, D):
     in_front = cam_xyz[:, 2] > MIN_FORWARD_DEPTH_M
 
     pixels = np.zeros((n, 2), dtype=np.float64)
-    if in_front.any():
+    K = np.asarray(K, dtype=np.float64)
+    if in_front.any() and not np.any(D):
+        # No distortion: cv2.projectPoints reduces to the pinhole model, which numpy
+        # does several times faster on a dense cloud.
+        p = cam_xyz[in_front]
+        pixels[in_front] = np.stack([K[0, 0] * p[:, 0] / p[:, 2] + K[0, 2],
+                                     K[1, 1] * p[:, 1] / p[:, 2] + K[1, 2]], axis=1)
+    elif in_front.any():
         rvec, _ = cv2.Rodrigues(R)
         tvec = t.reshape(3, 1)
         projected, _ = cv2.projectPoints(
             xyz_lidar[in_front],
             rvec,
             tvec,
-            np.asarray(K, dtype=np.float64),
+            K,
             np.asarray(D, dtype=np.float64),
         )
         pixels[in_front] = projected.reshape(-1, 2)
@@ -234,7 +241,44 @@ def draw_overlay(
     if tiny.any():
         out[v[tiny], u[tiny]] = colors[tiny]
 
-    for i in np.where(~tiny)[0]:
-        cv2.circle(out, (int(u[i]), int(v[i])), int(sizes[i]), tuple(int(c) for c in colors[i]), -1)
-
+    _draw_disks(out, u, v, sizes, colors, ~tiny)
     return out
+
+
+_DISK_KERNELS = {}
+
+
+def _draw_disks(out, u, v, sizes, colors, big):
+    """
+    Draw filled disks of radius `sizes` (px) in painter's order, with no per-point loop.
+
+    Points arrive far-to-near and size grows as range shrinks, so points of one size are
+    contiguous. For each size, point indices go into a layer and a disk-shaped max filter
+    spreads them; each pixel then holds the highest index within the radius, i.e. the
+    nearest point, which is the pixel the painter's algorithm would leave. Groups are
+    applied far-to-near so nearer sizes overwrite farther ones.
+
+    """
+    big = np.flatnonzero(big)
+    if big.size == 0:
+        return
+    h, w = out.shape[:2]
+    sz = sizes[big]
+    starts = np.concatenate([[0], np.flatnonzero(np.diff(sz)) + 1, [big.size]])
+    best = np.zeros((h, w), np.float32)          # per pixel: index of the nearest point covering it
+    for a, b in zip(starts[:-1], starts[1:]):
+        r = int(sz[a])
+        idx = big[a:b]
+        gu, gv = u[idx], v[idx]
+        x0, x1 = max(int(gu.min()) - r, 0), min(int(gu.max()) + r + 1, w)
+        y0, y1 = max(int(gv.min()) - r, 0), min(int(gv.max()) + r + 1, h)
+        layer = np.zeros((y1 - y0, x1 - x0), np.float32)
+        layer[gv - y0, gu - x0] = idx + 1          # float32 holds integers exactly up to 2**24
+        kernel = _DISK_KERNELS.get(r)
+        if kernel is None:
+            kernel = _DISK_KERNELS[r] = np.zeros((2 * r + 1, 2 * r + 1), np.uint8)
+            cv2.circle(kernel, (r, r), r, 1, -1)    # same footprint cv2.circle would draw
+        roi = best[y0:y1, x0:x1]
+        np.maximum(roi, cv2.dilate(layer, kernel), out=roi)
+    painted = best > 0
+    out[painted] = colors[best[painted].astype(np.int64) - 1]
