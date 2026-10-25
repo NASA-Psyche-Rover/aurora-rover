@@ -28,7 +28,7 @@ header { display: flex; align-items: center; gap: 20px; padding: 10px 20px; bord
 #clock { font: 12px var(--mono); color: var(--muted); min-width: 64px; text-align: right; }
 .hint { color: var(--dim); font-size: 12px; }
 
-main { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 14px 20px 18px; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px 20px 18px; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .panel-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
@@ -43,9 +43,6 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, m
 .media { position: relative; background: #05080c; cursor: zoom-in; aspect-ratio: 4 / 3; flex: none; overflow: hidden; }
 .media img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
 .media.cloud { cursor: grab; } .media.cloud.drag { cursor: grabbing; }
-.inset { position: absolute; right: 8px; bottom: 8px; width: 30%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; }
-.inset span { position: absolute; left: 6px; top: 4px; font: 10px var(--mono); color: #fff; text-shadow: 0 0 3px #000; }
-.inset img { aspect-ratio: 4 / 3; }
 
 .metrics { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; overflow: auto; flex: 1; min-height: 0; }
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -82,8 +79,7 @@ main.zoomed .panel.zoom .media.cloud { cursor: grab; }
 main.zoomed .panel.zoom .metrics { flex: none; width: 360px; border-left: 1px solid var(--line); }
 main.zoomed .panel.zoom .tiles { grid-template-columns: repeat(2, 1fr); }
 main.zoomed .panel.zoom .extra { display: block; }
-main.zoomed .inset { width: 22%; }
-
+main.zoomed 
 @media (max-width: 1100px) { main { grid-template-columns: 1fr; overflow: auto; } body { overflow: auto; } }
 </style>
 </head>
@@ -92,40 +88,18 @@ main.zoomed .inset { width: 22%; }
   <div class="brand"><b>AURORA</b> &nbsp;PERCEPTION</div>
   <div class="sub">Cubli prototype · OAK-D Lite + Livox Mid-360 · Jetson Orin Nano</div>
   <div class="spacer"></div>
-  <div class="hint" id="hint">click a panel to enlarge · keys 1 2 3 · Esc to return</div>
+  <div class="hint" id="hint">click a panel to enlarge · keys 1 2 · Esc to return</div>
   <div class="badge NONE" id="topBadge">NO DATA</div>
   <div id="clock">--:--:--</div>
 </header>
 
 <main id="grid">
-  <section class="panel" id="p-overlay" data-key="1">
-    <div class="panel-head"><h2>LiDAR overlay</h2><span class="tag">Mid-360 → OAK-D</span>
-      <div class="live off" id="live-overlay"><span class="dot"></span><span class="t">no signal</span></div></div>
-    <div class="body">
-      <div class="media"><img data-src="/stream/overlay" alt="LiDAR points projected onto the camera image"></div>
-      <div class="metrics">
-        <div class="tiles">
-          <div class="tile"><div class="k">Overlay</div><div class="v" id="m-ov-fps">–<small>fps</small></div></div>
-          <div class="tile"><div class="k">LiDAR rate</div><div class="v" id="m-ov-hz">–<small>Hz</small></div></div>
-          <div class="tile"><div class="k">Points</div><div class="v" id="m-ov-pps">–<small>/s</small></div></div>
-        </div>
-        <div class="trends">
-          <div class="trend"><div class="k"><span>Overlay frame rate</span><span id="t-ov-fps">–</span></div><canvas data-trend="ov-fps"></canvas></div>
-          <div class="trend"><div class="k"><span>LiDAR points per second</span><span id="t-ov-pps">–</span></div><canvas data-trend="ov-pps"></canvas></div>
-        </div>
-        <div class="cap">Each LiDAR return is projected into the camera image and coloured by range (near = warm).</div>
-        <div class="extra cap">Projection uses the saved camera–LiDAR extrinsic and the camera intrinsics, so the points land on the object they hit.</div>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel" id="p-detection" data-key="2">
+  <section class="panel" id="p-detection" data-key="1">
     <div class="panel-head"><h2>Object detection</h2><span class="tag" id="det-tag">YOLO + stereo depth</span>
       <div class="live off" id="live-detection"><span class="dot"></span><span class="t">no signal</span></div></div>
     <div class="body">
       <div class="media">
         <img data-src="/stream/detection" alt="Object detection with distances">
-        <div class="inset"><img data-src="/stream/depth" alt="Depth heatmap"></div>
       </div>
       <div class="metrics">
         <div class="decision NONE" id="decision"><div class="d" id="d-word">–</div><div class="r" id="d-reason">waiting for camera</div></div>
@@ -146,7 +120,7 @@ main.zoomed .inset { width: 22%; }
     </div>
   </section>
 
-  <section class="panel" id="p-cloud" data-key="3">
+  <section class="panel" id="p-cloud" data-key="2">
     <div class="panel-head"><h2>LiDAR point cloud</h2><span class="tag">live 3D</span>
       <div class="live off" id="live-cloud"><span class="dot"></span><span class="t">no signal</span></div></div>
     <div class="body">
@@ -170,16 +144,49 @@ main.zoomed .inset { width: 22%; }
 <script>
 const $ = id => document.getElementById(id);
 const grid = $("grid");
-const KEYS = { "1": "p-overlay", "2": "p-detection", "3": "p-cloud" };
+const KEYS = { "1": "p-detection", "2": "p-cloud" };
 
-// ---- streams: start after load so the page paints first ----
-document.querySelectorAll("img[data-src]").forEach(img => { img.src = img.dataset.src; });
+// ---- streams: the page pulls one frame at a time. A plain MJPEG <img> lets the browser queue frames
+// it cannot decode fast enough, so the picture drifts seconds behind; here the next frame is requested
+// only after the previous one is on screen, so the view is always the latest frame. Hidden panels stop
+// asking, which also stops the server rendering them.
+function pull(img) {
+  const ctl = new AbortController();
+  img._ctl = ctl;
+  (async () => {
+    let after = -1, prev = null;
+    while (!ctl.signal.aborted) {
+      try {
+        const r = await fetch(`/frame/${img.dataset.src.split("/").pop()}?after=${after}`, { cache: "no-store", signal: ctl.signal });
+        after = Number(r.headers.get("X-Frame-Count")) || after;
+        const url = URL.createObjectURL(await r.blob());
+        img.src = url;
+        await img.decode().catch(() => {});
+        if (prev) URL.revokeObjectURL(prev);
+        prev = url;
+      } catch (e) {
+        if (ctl.signal.aborted) break;
+        await new Promise(res => setTimeout(res, 500));
+      }
+    }
+  })();
+}
+function syncStreams() {
+  document.querySelectorAll(".panel").forEach(p => {
+    const hidden = grid.classList.contains("zoomed") && !p.classList.contains("zoom");
+    p.querySelectorAll("img[data-src]").forEach(img => {
+      if (hidden && img._ctl) { img._ctl.abort(); img._ctl = null; img.removeAttribute("src"); }
+      else if (!hidden && !img._ctl) pull(img);
+    });
+  });
+}
 
 // ---- zoom ----
 let moved = false;
 function zoomTo(id) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("zoom", p.id === id));
   grid.classList.toggle("zoomed", !!id);
+  syncStreams();
 }
 document.querySelectorAll(".panel").forEach(p => {
   p.querySelector(".media").addEventListener("click", () => {
@@ -193,7 +200,7 @@ addEventListener("keydown", e => {
 });
 
 // open straight into a zoomed panel with e.g. /#2
-if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]);
+if (KEYS[location.hash.slice(1)]) zoomTo(KEYS[location.hash.slice(1)]); else syncStreams();
 
 // ---- cloud camera: drag = rotate, wheel = zoom, double-click = reset view ----
 const cloud = document.querySelector(".media.cloud");
@@ -234,15 +241,11 @@ function drawTrend(cv) {
 }
 function trends(m) {
   const d = m.detection || {};
-  pushHist("ov-fps", m.overlay.online ? m.overlay.fps : null);
-  pushHist("ov-pps", m.cloud.online ? m.cloud.points_per_s : null);
   pushHist("near", d.online && d.hazard_m !== undefined ? d.hazard_m : null);
   pushHist("lat", d.online ? d.latency_ms ?? null : null);
   pushHist("c-pps", m.cloud.online ? m.cloud.points_per_s : null);
   pushHist("c-fps", m.cloud.online ? m.cloud.render_fps : null);
   const last = (k, f) => { const a = HIST[k]; const v = a && a[a.length - 1]; return v === null || v === undefined ? "–" : f(v); };
-  $("t-ov-fps").textContent = last("ov-fps", v => v.toFixed(0) + " fps");
-  $("t-ov-pps").textContent = last("ov-pps", v => (v / 1000).toFixed(0) + "k /s");
   $("t-near").textContent = last("near", v => v.toFixed(2) + " m");
   if (d.online && (d.hazard_m === null || d.hazard_m === undefined)) $("t-near").textContent = "path clear";
   $("t-lat").textContent = last("lat", v => v + " ms");
@@ -261,13 +264,9 @@ function setLive(id, online, fps) {
 }
 function render(m) {
   const d = m.detection || {};
-  setLive("live-overlay", m.overlay.online, m.overlay.fps);
   setLive("live-detection", d.online, d.fps);
   setLive("live-cloud", m.cloud.online, m.cloud.render_fps);
 
-  setTile("m-ov-fps", fmt(m.overlay.fps, 0), "fps");
-  setTile("m-ov-hz", fmt(m.cloud.lidar_hz, 0), "Hz");
-  setTile("m-ov-pps", m.cloud.points_per_s ? (m.cloud.points_per_s / 1000).toFixed(0) + "k" : "–", "/s");
 
   const word = d.decision || (d.error ? "ERROR" : "–");
   $("decision").className = "decision " + (d.decision || "NONE");

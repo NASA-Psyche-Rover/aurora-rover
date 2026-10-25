@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -64,7 +65,7 @@ def test_view_is_static_until_steered_and_clamps():
 
 
 def test_n_points_matches_points_without_building_them():
-    acc = CloudAccumulator(max_points=700)
+    acc = CloudAccumulator(window_s=8.0, max_points=700)
     for i in range(5):
         acc.add(_room(300, seed=i), t=1.0 + i * 0.1)
     assert acc.n_points(now=2.0) == len(acc.points(now=2.0))
@@ -75,7 +76,7 @@ def test_n_points_matches_points_without_building_them():
 
 
 def test_subsampling_is_stable_between_renders():
-    acc = CloudAccumulator(max_points=700)
+    acc = CloudAccumulator(window_s=8.0, max_points=700)
     for i in range(5):
         acc.add(_room(300, seed=i), t=1.0 + i * 0.1)
     first, second = acc.points(now=2.0), acc.points(now=2.05)
@@ -92,9 +93,18 @@ def test_old_points_fade_out_before_they_expire():
 
 
 def test_points_with_age_matches_points():
-    acc = CloudAccumulator(max_points=700)
+    acc = CloudAccumulator(window_s=8.0, max_points=700)
     for i in range(5):
         acc.add(_room(300, seed=i), t=1.0 + i * 0.1)
     pts, age = acc.points(now=2.0, with_age=True)
     assert len(age) == len(pts) and np.array_equal(pts, acc.points(now=2.0))
     assert age.min() >= 0.5 and age.max() <= 1.0 + 1e-6
+
+
+def test_bgra_output_encodes_to_the_same_jpeg():
+    r = CloudRenderer(size=(320, 240))
+    pts = _room(3000)
+    age = np.zeros(len(pts), np.float32)
+    bgr, bgra = r.render(pts, age), r.render(pts, age, bgra=True)
+    assert bgra.shape[2] == 4 and np.array_equal(bgra[..., :3], bgr)
+    assert cv2.imencode(".jpg", bgra)[1].tobytes() == cv2.imencode(".jpg", bgr)[1].tobytes()

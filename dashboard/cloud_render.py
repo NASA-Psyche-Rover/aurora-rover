@@ -60,8 +60,9 @@ class CloudAccumulator:
     `max_points`, a random subset is returned (rendering cost stays bounded
     and the subset keeps the cloud's overall shape)."""
 
-    def __init__(self, window_s=8.0, max_points=150_000, max_range_m=40.0):
+    def __init__(self, window_s=1.0, max_points=150_000, max_range_m=40.0, max_frames=None):
         self.window_s, self.max_points, self.max_range_m = window_s, max_points, max_range_m
+        self.max_frames = max_frames    # keep at most this many newest frames (a time window alone blinks when frame arrivals jitter)
         self._frames = deque()    # (t, (n, 3) float32)
         self._lock = threading.Lock()
         self._k = 1               # current subsampling stride; only changes when the point count drifts far from the budget
@@ -81,6 +82,8 @@ class CloudAccumulator:
 
     def _expire(self, now):
         while self._frames and now - self._frames[0][0] > self.window_s:
+            self._frames.popleft()
+        while self.max_frames and len(self._frames) > self.max_frames:
             self._frames.popleft()
 
     def _stride(self, total, commit=False):
@@ -219,10 +222,12 @@ class CloudRenderer:
         """sensor marker at the origin"""
         o = self._project(np.array([[0, 0, 0]], np.float32))
         if o[2][0] > 0.1:
-            cv2.circle(img, (int(o[0][0]), int(o[1][0])), 6, (255, 255, 255), -1, cv2.LINE_AA)
-            cv2.circle(img, (int(o[0][0]), int(o[1][0])), 10, (90, 180, 255), 2, cv2.LINE_AA)
+            cv2.circle(img, (int(o[0][0]), int(o[1][0])), 6, (255, 255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(img, (int(o[0][0]), int(o[1][0])), 10, (90, 180, 255, 255), 2, cv2.LINE_AA)
 
-    def render(self, pts, age=None, window_s=8.0):
+    def render(self, pts, age=None, window_s=1.0, bgra=False):
+        """bgra=True returns the 4-channel buffer as is (cv2.imencode accepts it, identical JPEG),
+        saving the BGR conversion."""
         # BGRA so each point is a single 32-bit write; converted to BGR at the end
         img = self._canvas.copy()
         if len(pts):
@@ -230,12 +235,12 @@ class CloudRenderer:
             self._ground_z = 0.9 * self._ground_z + 0.1 * low
         self._draw_rings(img)
         if len(pts) == 0:
-            return self._finish(img, dilate=False)
+            return self._finish(img, False, bgra)
 
         u, v, z = self._project(pts)
         ok = (z > 0.2) & (u >= 0) & (u < self.w - 1) & (v >= 0) & (v < self.h - 1)
         if not ok.any():
-            return self._finish(img, dilate=False)
+            return self._finish(img, False, bgra)
         u, v, z, pz = u[ok].astype(np.int32), v[ok].astype(np.int32), z[ok], pts[ok, 2]
         age = None if age is None else age[ok]
 
@@ -244,7 +249,8 @@ class CloudRenderer:
         h_idx = np.clip((pz - self._ground_z) * (255 / 2.5), 0, 255).astype(np.int32)
         fade = np.clip(1.25 - (z - self.dist) / (self.dist * 2.2 + 4), 0.35, 1.0)
         if age is not None:     # old points dim out gradually instead of vanishing when their frame expires
-            fade *= np.clip((window_s - age) * (1.0 / AGE_FADE_S), 0.0, 1.0)
+            fade_s = min(AGE_FADE_S, 0.5 * window_s)    # short windows fade over half their length, so fresh points stay bright
+            fade *= np.clip((window_s - age) * (1.0 / fade_s), 0.0, 1.0)
         f_idx = np.clip((fade - FADE_MIN) * ((FADE_LEVELS - 1) / (1.0 - FADE_MIN)), 0, FADE_LEVELS - 1).astype(np.int32)
         pix = COLOUR_TABLE[h_idx * FADE_LEVELS + f_idx]
 
@@ -253,13 +259,14 @@ class CloudRenderer:
         dq = np.clip(z * (65535.0 / 60.0), 0, 65535).astype(np.uint16)
         order = np.argsort(65535 - dq, kind="stable")
         img.view(np.uint32).reshape(-1)[(v * self.w + u)[order]] = pix[order]
-        return self._finish(img, dilate=True)
+        return self._finish(img, True, bgra)
 
-    def _finish(self, img, dilate):
+    def _finish(self, img, dilate, bgra=False):
         if dilate:
             # grow each point to ~2x2 px so the cloud reads as surfaces, not dust
             img = cv2.dilate(img, np.ones((2, 2), np.uint8))
-        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        if not bgra:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         if dilate:
             self._marker(img)
         return img
