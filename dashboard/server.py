@@ -5,7 +5,6 @@ AURORA live dashboard server.
 One ROS 2 node that subscribes to the sensor topics, builds the three panel
 streams, and serves them with Flask on http://localhost:8080:
 
-  /stream/overlay    LiDAR points drawn on the OAK-D image (from aurora_lidar_overlay)
   /stream/detection  YOLO boxes + metric distances + drop/slope edge
   /stream/depth      the metric distance heatmap (inset on the detection panel)
   /stream/cloud      3D render of the live Livox point cloud (orbit camera, moved by dragging)
@@ -17,7 +16,7 @@ bag alike. Detection reuses perception/OAKD-obj-detec.py (Perception,
 annotate) so the dashboard shows exactly what that script decides.
 
 Topics (all overridable): /oak/rgb/image_raw, /oak/stereo/depth,
-/oak/rgb/camera_info, /livox/lidar, /aurora/lidar_overlay/image.
+/oak/rgb/camera_info, /livox/lidar.
 """
 import os
 
@@ -52,7 +51,8 @@ from cloud_render import CloudAccumulator, CloudRenderer
 
 JPEG_QUALITY = 80
 STALE_S = 2.0            # a panel with no new data for this long shows NO SIGNAL
-CLOUD_FPS = 12
+CLOUD_FPS = 30
+VIDEO_FPS = 30           # camera feed rate; independent of how fast detection runs
 
 
 def load_detection_module():
@@ -79,20 +79,39 @@ class Channel:
     def __init__(self, placeholder):
         self.placeholder = placeholder
         self.jpeg = None
+        self.captured = 0.0       # when the sensor frame behind `jpeg` arrived (X-Capture-Time header; end-to-end lag checks)
         self.stamp = 0.0          # wall time of the last publish
         self.count = 0
         self._cv = threading.Condition()
         self._rate = None         # smoothed frames per second
+        self.readers = 0          # open MJPEG connections
+        self.last_poll = 0.0      # last time a page asked for a frame; producers pause when nobody is watching
 
-    def publish(self, jpeg):
+    def publish(self, jpeg, captured=0.0):
         now = time.time()
         with self._cv:
             if self.stamp:
                 inst = 1.0 / max(now - self.stamp, 1e-3)
                 self._rate = inst if self._rate is None else 0.85 * self._rate + 0.15 * inst
-            self.jpeg, self.stamp = jpeg, now
+            self.jpeg, self.stamp, self.captured = jpeg, now, captured
             self.count += 1
             self._cv.notify_all()
+
+    def watched(self):
+        return self.readers > 0 or time.time() - self.last_poll < 1.5
+
+    def next_frame(self, after):
+        """Newest JPEG once it is newer than frame number `after` (waits up to 1 s). The page asks
+        for a frame only after it has shown the previous one, so a slow browser skips frames
+        instead of queueing them (an MJPEG stream queues inside the browser and the lag grows)."""
+        self.last_poll = time.time()
+        with self._cv:
+            self._cv.wait_for(lambda: self.count != after, timeout=1.0)
+            jpeg, count = self.jpeg, self.count
+        if jpeg is None or not self.online():
+            time.sleep(0.25)
+            return self.placeholder, count
+        return jpeg, count
 
     def age_s(self):
         return time.time() - self.stamp if self.stamp else None
@@ -106,14 +125,20 @@ class Channel:
 
     def mjpeg(self):
         last = -1
-        while True:
+        with self._cv:
+            self.readers += 1
+        try:
+            while True:
+                with self._cv:
+                    self._cv.wait_for(lambda: self.count != last, timeout=1.0)
+                    jpeg, last, cap = self.jpeg, self.count, self.captured
+                if jpeg is None or not self.online():
+                    jpeg = self.placeholder
+                    time.sleep(0.25)
+                yield b"--frame\r\nContent-Type: image/jpeg\r\nX-Capture-Time: " + b"%.3f" % cap + b"\r\nContent-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
+        finally:      # client left (or zoomed to another panel)
             with self._cv:
-                self._cv.wait_for(lambda: self.count != last, timeout=1.0)
-                jpeg, last = self.jpeg, self.count
-            if jpeg is None or not self.online():
-                jpeg = self.placeholder
-                time.sleep(0.25)
-            yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
+                self.readers -= 1
 
 
 def encode(img, quality=JPEG_QUALITY, sharp_colour=False):
@@ -129,21 +154,24 @@ class Dashboard(Node):
         self.bridge = CvBridge()
         self.det = load_detection_module()
         self.channels = {
-            "overlay": Channel(no_signal_jpeg("NO OVERLAY SIGNAL")),
             "detection": Channel(no_signal_jpeg("NO CAMERA SIGNAL")),
             "depth": Channel(no_signal_jpeg("NO DEPTH", (320, 240))),
             "cloud": Channel(no_signal_jpeg("NO LIDAR SIGNAL", (960, 720))),
         }
-        self.cloud_acc = CloudAccumulator(window_s=args.cloud_window, max_points=100_000)
+        self.cloud_acc = CloudAccumulator(window_s=args.cloud_window, max_points=args.cloud_max_points,
+                                         max_frames=args.cloud_frames)
         self.cloud_renderer = CloudRenderer()
         self.det_state = {}       # latest detection result summary for /api/metrics
         self.det_lock = threading.Lock()
         self.K = None
         self._rgb_msg = self._depth_msg = None   # raw messages; converted by the detection thread when it needs them
         self._rgb_n = 0
+        self._rgb_t = 0.0         # arrival time of _rgb_msg
         self._det_stop = threading.Event()
+        self._det_stamp = 0.0     # when detection last produced a result (the video stream pauses when unwatched)
+        self._heatmap = None      # newest depth heatmap; encoded by its own thread at a lower rate
+        self._last_det = None     # (terrain, rocks, decision) of the newest detection, drawn onto every video frame
 
-        self.create_subscription(Image, args.overlay_topic, self.on_overlay, 1)
         self.create_subscription(Image, args.image_topic, self.on_rgb, qos_profile_sensor_data)
         self.create_subscription(Image, args.depth_topic, self.on_depth, qos_profile_sensor_data)
         self.create_subscription(CameraInfo, args.camera_info_topic, self.on_info, 1)
@@ -151,15 +179,14 @@ class Dashboard(Node):
 
         threading.Thread(target=self.detection_loop, daemon=True).start()
         threading.Thread(target=self.cloud_loop, daemon=True).start()
+        threading.Thread(target=self.video_loop, daemon=True).start()
+        threading.Thread(target=self.heatmap_loop, daemon=True).start()
         self.get_logger().info("dashboard subscribed; waiting for sensor topics")
 
     # ---------------- ROS callbacks (cheap: store / encode only) ----------------
-    def on_overlay(self, msg):
-        img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        self.channels["overlay"].publish(encode(img))
-
     def on_rgb(self, msg):
         self._rgb_msg = msg
+        self._rgb_t = time.time()
         self._rgb_n += 1
 
     def on_depth(self, msg):
@@ -170,6 +197,8 @@ class Dashboard(Node):
             self.K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
 
     def on_cloud(self, msg):
+        if not self.channels["cloud"].watched():     # nobody is looking at the cloud: skip parsing it too
+            return
         from aurora_lidar_overlay import pointcloud_utils
         xyz = pointcloud_utils.pointcloud2_to_arrays(msg)["xyz"]
         self.cloud_acc.add(xyz)
@@ -204,12 +233,9 @@ class Dashboard(Node):
                 time.sleep(0.5)
                 continue
 
-            view = rgb.copy()
-            det.annotate(view, r["terrain"], r["rocks"], K)
-            h, w = view.shape[:2]
-            cv2.rectangle(view, (0, 0), (w - 1, h - 1), det.DECISION_COLORS[r["decision"]], 4)
-            self.channels["detection"].publish(encode(view))
-            self.channels["depth"].publish(encode(r["heatmap"], 75))
+            self._last_det = (r["terrain"], r["rocks"], r["decision"])
+            self._heatmap = r["heatmap"]
+            self._det_stamp = time.time()
 
             now = time.time()
             frame_s = 0.9 * frame_s + 0.1 * (now - t_prev)
@@ -233,19 +259,66 @@ class Dashboard(Node):
                     "fps": round(1.0 / frame_s, 1), "latency_ms": round(step_s * 1000),
                 }
 
+    # ---------------- heatmap thread ----------------
+    def heatmap_loop(self):
+        """The small depth inset does not need every detection frame; 10 Hz keeps JPEG work off the detector."""
+        last = None
+        while not self._det_stop.is_set():
+            hm = self._heatmap
+            if hm is not None and hm is not last and self.channels["depth"].watched():
+                last = hm
+                self.channels["depth"].publish(encode(hm, 75))
+            time.sleep(0.1)
+
+    # ---------------- video thread ----------------
+    def video_loop(self):
+        """Camera feed at the camera's own rate with the newest detection drawn on it, so the
+        video stays smooth even though detection only updates ~10 times a second."""
+        det, last_n, period = self.det, -1, 1.0 / VIDEO_FPS
+        while not self._det_stop.is_set():
+            t0 = time.time()
+            msg, n, t_rgb, K, ld = self._rgb_msg, self._rgb_n, self._rgb_t, self.K, self._last_det
+            if msg is None or n == last_n or K is None or not self.channels["detection"].watched():
+                time.sleep(0.005 if self.channels["detection"].watched() else 0.1)
+                continue
+            last_n = n
+            view = self.bridge.imgmsg_to_cv2(msg, "bgr8").copy()
+            if ld is not None:
+                terrain, rocks, decision = ld
+                det.annotate(view, terrain, rocks, K)
+                h, w = view.shape[:2]
+                cv2.rectangle(view, (0, 0), (w - 1, h - 1), det.DECISION_COLORS[decision], 4)
+            self.channels["detection"].publish(encode(view), t_rgb)
+            time.sleep(max(period - (time.time() - t0), 0.0))
+
     # ---------------- cloud render thread ----------------
     def cloud_loop(self):
         period = 1.0 / CLOUD_FPS
-        seen = None
+        # JPEG encoding (~20 ms, releases the GIL) runs in its own thread so it overlaps the next
+        # render; the slot holds only the newest frame, so a slow encode drops frames, never lags
+        slot, ready = [None], threading.Event()
+
+        def encode_loop():
+            while not self._det_stop.is_set():
+                if not ready.wait(0.5):
+                    continue
+                ready.clear()
+                img, slot[0] = slot[0], None
+                if img is not None:
+                    self.channels["cloud"].publish(encode(img, 80, sharp_colour=True))
+
+        threading.Thread(target=encode_loop, daemon=True).start()
+        last = (-1, -1)
         while not self._det_stop.is_set():
             t0 = time.time()
+            # redraw only when a new LiDAR frame arrived or the view moved; no age fade, so a frame
+            # looks the same for its whole life and the cloud never pulses
             state = (self.cloud_acc.version, self.cloud_renderer.view_version)
-            # draw only when there is new LiDAR data or the camera moved
-            if state != seen and self.cloud_acc.age_s() is not None and self.cloud_acc.age_s() < STALE_S:
-                seen = state
-                pts, age = self.cloud_acc.points(with_age=True)
-                img = self.cloud_renderer.render(pts, age, self.cloud_acc.window_s)
-                self.channels["cloud"].publish(encode(img, 80, sharp_colour=True))
+            if state != last and self.channels["cloud"].watched() and self.cloud_acc.age_s() is not None and self.cloud_acc.age_s() < STALE_S:
+                last = state
+                pts = self.cloud_acc.points()
+                slot[0] = self.cloud_renderer.render(pts, None, self.cloud_acc.window_s, bgra=True)
+                ready.set()
             time.sleep(max(period - (time.time() - t0), 0.005))
 
     # ---------------- metrics ----------------
@@ -255,10 +328,10 @@ class Dashboard(Node):
         msgs_hz, pts_hz = self.cloud_acc.rates()
         with self.det_lock:
             d = dict(self.det_state)
-        d.update(online=ch["detection"].online())
+        d.update(online=time.time() - self._det_stamp < STALE_S)
         return {
             "time": time.time(),
-            "overlay": {"online": ch["overlay"].online(), "fps": ch["overlay"].fps()},
+            "watched": {k: c.watched() for k, c in ch.items()},
             "detection": d,
             "cloud": {"online": ch["cloud"].online(), "render_fps": ch["cloud"].fps(),
                       "lidar_hz": round(msgs_hz, 1), "points_per_s": int(pts_hz),
@@ -294,6 +367,14 @@ def make_app(node):
         return Response(ch.mjpeg(), mimetype="multipart/x-mixed-replace; boundary=frame",
                         headers={"Cache-Control": "no-store"})
 
+    @app.get("/frame/<name>")
+    def frame(name):
+        ch = node.channels.get(name)
+        if ch is None:
+            return ("unknown stream", 404)
+        jpeg, count = ch.next_frame(request.args.get("after", -1, type=int))
+        return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "no-store", "X-Frame-Count": str(count), "X-Capture-Time": "%.3f" % ch.captured})
+
     @app.get("/api/metrics")
     def metrics():
         return jsonify(node.metrics())
@@ -321,8 +402,9 @@ def main():
     ap.add_argument("--depth-topic", default="/oak/stereo/depth")
     ap.add_argument("--camera-info-topic", default="/oak/rgb/camera_info")
     ap.add_argument("--lidar-topic", default="/livox/lidar")
-    ap.add_argument("--overlay-topic", default="/aurora/lidar_overlay/image")
-    ap.add_argument("--cloud-window", type=float, default=8.0, help="seconds of LiDAR history in the cloud panel")
+    ap.add_argument("--cloud-frames", type=int, default=2, help="newest LiDAR frames drawn in the cloud panel (~0.1 s each); steadier than a time window")
+    ap.add_argument("--cloud-window", type=float, default=0.5, help="oldest a drawn LiDAR frame may be, in seconds (safety cap if the sensor stalls)")
+    ap.add_argument("--cloud-max-points", type=int, default=100_000, help="most points drawn in the cloud panel (render cost grows with it)")
     args, ros_args = ap.parse_known_args()
 
     torch.set_num_threads(2)

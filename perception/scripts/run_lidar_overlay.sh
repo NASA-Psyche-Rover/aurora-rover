@@ -71,18 +71,20 @@ wait_topic "$IMG" "camera image" || exit 1
 wait_topic "$INFO" "camera_info" || exit 1
 wait_topic "$LIDAR" "LiDAR" || exit 1
 
-echo "[run] launching overlay (pinned parameters)"
-start overlay "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec ros2 launch aurora_lidar_overlay overlay.launch.py \
-  image_topic:=$IMG camera_info_topic:=$INFO lidar_topic:=$LIDAR output_topic:=$OUT \
-  extrinsic_yaml:=$EXTR intrinsic_yaml:=$INTR invert_extrinsic:=false use_tf:=false color_by:=depth skip:=1"
-sleep 5
-WAIT_PID="${PIDS[-1]}"
+if [ "${DASHBOARD:-0}" != 1 ]; then   # the dashboard does not use the overlay image, so skip the node
+  echo "[run] launching overlay (pinned parameters)"
+  start overlay "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec ros2 launch aurora_lidar_overlay overlay.launch.py \
+    image_topic:=$IMG camera_info_topic:=$INFO lidar_topic:=$LIDAR output_topic:=$OUT \
+    extrinsic_yaml:=$EXTR intrinsic_yaml:=$INTR invert_extrinsic:=false use_tf:=false color_by:=depth skip:=1"
+  sleep 5
+fi
+WAIT_PID="${PIDS[@]: -1}"
 if [ "${DASHBOARD:-0}" = 1 ]; then
-  # Web dashboard (dashboard/run_dashboard.sh sets this): serves the overlay, detection and point-cloud panels.
+  # Web dashboard (dashboard/run_dashboard.sh sets this): serves the detection and point-cloud panels.
   DASH="$PERCEPTION/../dashboard/server.py"
   PORT="${DASHBOARD_PORT:-8080}"
   echo "[run] starting dashboard on http://127.0.0.1:$PORT"
-  start dashboard "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec python3 $DASH --port $PORT --overlay-topic $OUT ${DASHBOARD_ARGS:-}"
+  start dashboard "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; exec python3 $DASH --port $PORT ${DASHBOARD_ARGS:-}"
   WAIT_PID="${PIDS[-1]}"
   for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/api/metrics" >/dev/null 2>&1 && break; sleep 1; done
   if [ "${KIOSK:-1}" = 1 ]; then   # KIOSK=0 opens a normal browser window instead

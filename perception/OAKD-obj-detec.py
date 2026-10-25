@@ -49,6 +49,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 import traceback
@@ -212,15 +213,22 @@ class Perception:
         self.ground = mt.GroundTracker()
         self.depth_m = None
         self.shown_hazard_m = None
+        # YOLO runs on the GPU and the depth work on the CPU, so they overlap: the step takes
+        # as long as the slower of the two instead of their sum. One worker per job keeps the
+        # GPU calls on one thread.
+        self._yolo_pool = ThreadPoolExecutor(1, thread_name_prefix="yolo")
+        self._heat_pool = ThreadPoolExecutor(1, thread_name_prefix="heatmap")
 
     def __call__(self, item):
         frame, depth_mm = item
         K = self.K
+        yolo = self._yolo_pool.submit(lambda: list(self.detector.detect(frame)))
         self.depth_m = depth_m = mt.clean_depth(depth_mm, self.depth_m)
+        heat = self._heat_pool.submit(mt.depth_heatmap, depth_m, self.heatmap_size)
         terrain = mt.analyze(depth_m, K, self.ground)
 
         rocks = []   # (xyxy, label, distance_m or None, in_corridor)
-        for det in self.detector.detect(frame):
+        for det in yolo.result():
             dist, in_corridor = mt.box_distance(depth_m, K, det.xyxy, terrain)
             rocks.append((det.xyxy, self.detector.class_name(det.class_id), dist, in_corridor))
 
@@ -245,7 +253,7 @@ class Perception:
             shown = 0.8 * shown + 0.2 * hazard_m
         self.shown_hazard_m = shown
 
-        self.heatmap = mt.depth_heatmap(depth_m, self.heatmap_size)
+        self.heatmap = heat.result()
 
         return dict(terrain=terrain, rocks=rocks, decision=decision, reason=reason,
                     hazard_m=shown, hazard_source=hazard_source, heatmap=self.heatmap)
