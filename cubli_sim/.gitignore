@@ -1,0 +1,17 @@
+__pycache__/
+renders/
+*.mp4
+.DS_Store
+MUJOCO_LOG.TXT
+perception_freeze/runs/
+.claude/
+vpy
+sensor_check/*.png
+!sensor_check/overview.png
+vmjpy
+mjpython_script
+vpy
+mjpython_script
+assets/visual_cache/
+recordings/live_scene.npz
+.venv/

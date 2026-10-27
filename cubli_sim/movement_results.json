@@ -1,0 +1,115 @@
+[
+ {
+  "name": "existing (psyche_cubli.py)",
+  "edge_m": 0.17,
+  "mass_kg": 1.0,
+  "mass_source": "PLACEHOLDER 1.0 kg; uniform-cube inertia (I = m L^2/6), wheels point masses on a 4.5 cm ring",
+  "contact": "single box geom on the heightfield",
+  "gravity": "0.144 m/s^2 hard-coded, straight down",
+  "motor": "linear torque-speed line: stall 0.05 N*m (PLACEHOLDER), no-load 3020 rpm (used-part listing); no current/back-EMF/resistance model; separate mechanical brake 0.5 N*m (PLACEHOLDER); no bearing friction",
+  "idle_drift_mm": 0.5233642331232236,
+  "idle_max_excursion_mm": 0.898000211693008,
+  "idle_rot_deg": 0.3400699202050025,
+  "idle_rtf": 94.46215607227795,
+  "rolls": {
+   "+x": {
+    "ok": true,
+    "moved_cm": 17.0,
+    "sim_s": 5.5,
+    "flat": true
+   },
+   "+y": {
+    "ok": true,
+    "moved_cm": 16.9,
+    "sim_s": 5.5,
+    "flat": true
+   },
+   "-x": {
+    "ok": true,
+    "moved_cm": 17.1,
+    "sim_s": 5.5,
+    "flat": true
+   },
+   "-y": {
+    "ok": true,
+    "moved_cm": 16.8,
+    "sim_s": 5.5,
+    "flat": true
+   }
+  },
+  "roll_rtf": 40.97622761348053,
+  "balance": {
+   "ok": false,
+   "note": "no edge-balance controller in this sim"
+  },
+  "release": {
+   "ok": false,
+   "note": "n/a (no balance)"
+  },
+  "hop": {
+   "ok": true,
+   "moved_m": 1.35,
+   "air_s": 5.0,
+   "apex_cm": 45.6
+  },
+  "hop_rtf": 28.547829798030435
+ },
+ {
+  "name": "v2 (psyche_cubli_v2.py)",
+  "edge_m": 0.1520400390625,
+  "mass_kg": 0.9000000000000001,
+  "mass_source": "CAD edge 152.0 mm; part volumes/centroids/inertias from the STL split, masses YOUR NUMBER 900 g total + DATASHEET motors; CoM offset [-4.4, 1.1, 5.3] mm",
+  "contact": "rounded hull: 8 corner spheres + 12 edge capsules (r 5 mm) on the heightfield; box only vs boulders",
+  "gravity": "0.0966 m/s^2 at equator_broad, computed from the Shepard 2021 ellipsoid + spin, tilted 0.0 deg from the surface normal",
+  "motor": "GM3506: R 5.6 ohm, KV 141 rpm/V, Kt 0.0675 N*m/A, I limit 2.0 A, 11.1 V bus, back-EMF current model, electrical braking, Coulomb+viscous bearing friction with friction feed-forward, 200 Hz control with IMU noise",
+  "idle_drift_mm": 0.059338040988730884,
+  "idle_max_excursion_mm": 0.17640497693767196,
+  "idle_rot_deg": 0.03637005036414123,
+  "idle_rtf": 26.194645026427782,
+  "rolls": {
+   "+x": {
+    "ok": true,
+    "moved_cm": 15.6,
+    "sim_s": 12.8,
+    "flat": true,
+    "result": "roll OK: moved 16 cm in 12.8 s"
+   },
+   "+y": {
+    "ok": true,
+    "moved_cm": 14.6,
+    "sim_s": 14.8,
+    "flat": true,
+    "result": "roll OK: moved 15 cm in 14.8 s"
+   },
+   "-x": {
+    "ok": true,
+    "moved_cm": 14.6,
+    "sim_s": 16.7,
+    "flat": true,
+    "result": "roll OK: moved 15 cm in 16.7 s"
+   },
+   "-y": {
+    "ok": true,
+    "moved_cm": 19.2,
+    "sim_s": 15.8,
+    "flat": true,
+    "result": "roll OK: moved 19 cm in 15.7 s"
+   }
+  },
+  "roll_rtf": 21.186720587036618,
+  "balance": {
+   "ok": true,
+   "note": "held on the edge 5 s: True; balancing on the edge (LQR). Press Enter again to let go"
+  },
+  "release": {
+   "ok": true,
+   "note": "balance OK: moved 10 cm in 32.6 s"
+  },
+  "hop": {
+   "ok": true,
+   "moved_m": 0.18,
+   "note": "hop OK: moved 14 cm in 15.8 s"
+  },
+  "balance_hop_rtf": 16.777608660678087
+ }
+]

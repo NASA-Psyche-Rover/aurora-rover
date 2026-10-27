@@ -1,0 +1,64 @@
+{
+ "objdetec (MuJoCo Sim copy, used by the adapters)": {
+  "root": "/Users/aayou/Desktop/Aayou/ASU/EPICS/NASA Psyche/Stage 3/MuJoCo Sim/psyche-objdetec",
+  "head": "2a6a2e1094e4c007879f3190917bfeff8f63b92c",
+  "branch": "oak-d-lite-integration",
+  "status": "M .DS_Store",
+  "files": {
+   "main.py": "bdc2ad9c0c6d57ec0140ecfc88a5662abe32d1a6",
+   "OAKD-obj-detec.py": "877ac7348063e02e94650c2ac8c931741b7c02c3",
+   "src/camera_stream.py": "310a31a0f26b261327a7ce36e24d42475188ec6b",
+   "src/decision.py": "2a98d94a54c5e284ec50893fc3e2d988592e6c2a",
+   "src/detect.py": "912dc66a7e086a548a0ddb5c30a8cdcc8e018350",
+   "src/terrain_risk.py": "e39ed723e76fdaceec7071ac9d2a4c75da73deb3",
+   "src/utils.py": "8d900db01b2b4b0e9e91f1df488a8ef62bba500a",
+   "scripts/terrain_demo.py": "b20f59af7065560ff5e3ee7a67acc4e70adbfba7",
+   "scripts/quantize_profile.py": "2b0b9d3d5889c52a23a91ce3552aa15809681ff5",
+   "legacy/terrain_risk_cubli.py": "700e33250a958ab2dea71341615b65333e0a4f9e",
+   "models/best.pt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "models/yolov8n.pt": "0db4ca4b4d25d68a4497220353592645ca4f71bf",
+   "models/midas_small.onnx": "1a76f2316f5b43f59036c522f092a65fd9f1f400",
+   "models/midas_small.onnx.data": "fde3def76b03e3062a9bd41af737bfcb18848e5c",
+   "models/midas_small_openvino/midas_small.xml": "7532ac76fa95f66426c8ca0ac4ebfe939e08e29d",
+   "models/midas_small_openvino/midas_small.bin": "9dea5aec4da901f0ae78ae497902bacaafb3ba90"
+  },
+  "diff_lines": 0,
+  "diff_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+ },
+ "objdetec (~/psyche-objdetec, older fork)": {
+  "root": "/Users/aayou/psyche-objdetec",
+  "head": "ee3b90995028d487de0b33d424fb0c53144601f3",
+  "branch": "oak-d-lite-integration",
+  "status": "M main.py",
+  "files": {
+   "main.py": "8ece172cfa88bc33a977504f14ece275a171ba2e",
+   "src/camera_stream.py": "d0598df35c3d812ae788eb9f8944bd72bca2d8fd",
+   "src/decision.py": "db556087d80671cf7c597b02e090e15b76fa48f4",
+   "src/detect.py": "a566810f93b088b5eb3cc83e2704b2072d72a304",
+   "src/terrain_risk.py": "14fc1051dd32245786a58f7d76a6cb9b18c97d56",
+   "src/utils.py": "13d39f9fa3692043b5d30098a76da28dd6d115b5",
+   "models/best.pt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+   "models/yolov8n.pt": "0db4ca4b4d25d68a4497220353592645ca4f71bf"
+  },
+  "diff_lines": 449,
+  "diff_sha1": "fffe6c897586c4c699a85c9adff8579ee1368a5c"
+ },
+ "cubli_sensors (LiDAR / stereo depth / camera)": {
+  "root": "/Users/aayou/cubli_sensors",
+  "head": "c293f971fafb00653549aa0488d128f337ff4d9c",
+  "branch": "main",
+  "status": "",
+  "files": {
+   "cubli_sensors.py": "16db43838bc52eff2c68a2799a58d3e5e29c6fbc",
+   "demo_sensors.py": "b5121d75146ff59605359e447f0395d4a1964b77",
+   "psyche_terrain.py": "f82a4c045e48b929818580464b885350e14fc747",
+   "tools/import_cubli_stl.py": "4cf41e070ada7a3680c6b555deddf8a850d8ad39",
+   "assets/cubli_frame.obj": "e77d4a6721a1035db908e7809c8a5e103f0aaa91",
+   "assets/cubli_wheel.obj": "549f6b186649ebd8af23ee958b65075e81676b27",
+   "assets/cubli_motor.obj": "fbace4a4c400fcc3b94ed988f5f009b74882ff98",
+   "assets/cubli_hardware.obj": "09765bec1c29c9b7ebf0afac307a6f961a015965"
+  },
+  "diff_lines": 0,
+  "diff_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+ }
+}

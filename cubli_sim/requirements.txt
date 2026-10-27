@@ -1,0 +1,8 @@
+# Psyche Cubli sim + sensor dashboard + the team's rock detection (aurora-rover/perception)
+mujoco>=3.2
+numpy
+scipy
+opencv-python
+ultralytics          # YOLO (brings PyTorch). For an NVIDIA GPU on Windows/Linux, first install the CUDA build of
+                     # torch from https://pytorch.org, then this file
+onnxruntime          # only for the older local detection fallback

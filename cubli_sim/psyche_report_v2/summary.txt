@@ -1,0 +1,14 @@
+total 900 g | body 726 g, centre of mass offset [-4.4  1.1  5.3] mm from cube centre
+wheel 0 (+Z face): 58 g spinning, I_axial 8.07e-05 kg m^2
+wheel 1 (+Y face): 58 g spinning, I_axial 8.07e-05 kg m^2
+wheel 2 (-X face): 58 g spinning, I_axial 8.07e-05 kg m^2
+GM3506 at 11.1 V: no-load 1569 rpm, stall 0.134 N*m, Kt 0.0675 N*m/A
+
+Psyche: equator_long_end     |g|=0.0885  roll needs 1103 rpm, uses 1213, max 1379
+Psyche: equator_broad        |g|=0.0966  roll needs 1154 rpm, uses 1269, max 1379
+Psyche: panthia              |g|=0.1128  roll needs 1272 rpm, uses 1400, max 1379
+Psyche: golf_south           |g|=0.1149  roll needs 1243 rpm, uses 1367, max 1379
+Psyche: eros_crater          |g|=0.1210  roll needs 1296 rpm, uses 1425, max 1379
+Psyche: north_pole           |g|=0.1234  roll needs 1313 rpm, uses 1445, max 1379
+Moon                         |g|=1.6200  roll needs 4826 rpm, uses 5309, max 1379
+Earth                        |g|=9.8100  roll needs 11875 rpm, uses 13063, max 1379

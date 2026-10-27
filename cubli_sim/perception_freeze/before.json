@@ -1,0 +1,101 @@
+{
+ "objdetec": {
+  "mars_rover_image2.jpg": {
+   "boxes": [],
+   "labels": [],
+   "status": "STOP (DROP AHEAD)",
+   "risk": 2.32964,
+   "density": 0.0,
+   "proximity": 0.0,
+   "decision": "STOP",
+   "distances_mm": [],
+   "depth_hash": "4076c7cdf037bfa8"
+  },
+  "ryugu_600.jpg": {
+   "boxes": [],
+   "labels": [],
+   "status": "STOP (DROP AHEAD)",
+   "risk": 2.89803,
+   "density": 0.0,
+   "proximity": 0.0,
+   "decision": "STOP",
+   "distances_mm": [],
+   "depth_hash": "65d6e96d603bab87"
+  },
+  "ryugu_image2.jpg": {
+   "boxes": [],
+   "labels": [],
+   "status": "STOP (DROP AHEAD)",
+   "risk": 3.93252,
+   "density": 0.0,
+   "proximity": 0.0,
+   "decision": "STOP",
+   "distances_mm": [],
+   "depth_hash": "124eb09a0bda68aa"
+  },
+  "ryugu_image3.jpg": {
+   "boxes": [],
+   "labels": [],
+   "status": "STOP (DROP AHEAD)",
+   "risk": 1.83447,
+   "density": 0.0,
+   "proximity": 0.0,
+   "decision": "STOP",
+   "distances_mm": [],
+   "depth_hash": "eb6e03a12db2f701"
+  },
+  "sojourner_image1.jpg": {
+   "boxes": [
+    [
+     331,
+     82,
+     405,
+     164
+    ]
+   ],
+   "labels": [
+    "bird"
+   ],
+   "status": "STOP (DROP AHEAD)",
+   "risk": 3.77718,
+   "density": 0.036143,
+   "proximity": 0.22556,
+   "decision": "STOP",
+   "distances_mm": [
+    4186.0
+   ],
+   "depth_hash": "950d3a4807876460"
+  }
+ },
+ "cubli_sensors": {
+  "snapshots": {
+   "s_bev.png": "007a4e6e948ac65e",
+   "s_blocked_drop.png": "24e19a204432297d",
+   "s_blocked_obstacle.png": "bf6881f5a62c643a",
+   "s_camera.png": "1a69812795c9a444",
+   "s_depth.png": "9fbbee94028275a8",
+   "s_gimbal_off.png": "3b6e8597e26bb3fb",
+   "s_gimbal_off_split.png": "c892f039bd21cda7",
+   "s_gimbal_on.png": "1ceacff22db9e53d",
+   "s_lidar3d.png": "f0f403bbd7cc2e08",
+   "s_lights_off.png": "cd025736a0861951",
+   "s_psyche_mid_tumble.png": "34c29c8804480563",
+   "s_quad.png": "d26b95b5c2c05ebe",
+   "s_split.png": "cb45e383b0c6f5ad",
+   "s_stowed_split.png": "12f244f36f1ede7b",
+   "s_trench.png": "18840d56e4864aa0",
+   "s_world.png": "244d9330ea8f24ed",
+   "s_world_orbited.png": "08206d8b82e1c3c5"
+  },
+  "lidar_n": 10152,
+  "lidar_hash": "d5d7d08a6d3f3253",
+  "depth_hash": "c4b334bf7ce3c7b6",
+  "depth_valid": 0.7598,
+  "rgb_hash": "df7706d4c6b9a75b",
+  "check_target": {
+   "7,0": "obstacle",
+   "20,0": "drop",
+   "3,0": "drop"
+  }
+ }
+}
