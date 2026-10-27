@@ -189,6 +189,9 @@ AURORA_PERCEPTION = _first_dir(os.environ.get("CUBLI_PERCEPTION_DIR"),          
                               need="OAKD-obj-detec.py")
 
 
+DETECT_GREEN = (0, 220, 0)     # BGR: YOLO boxes on the sim camera view
+
+
 class TeamPerception:
     """The team's CURRENT rover autonomy pipeline from GitHub (aurora-rover/perception/OAKD-obj-detec.py):
     Perception (metric stereo depth -> terrain/drops, YOLO -> boxes with distances, decision latch), annotate()
@@ -210,7 +213,11 @@ class TeamPerception:
         finally:
             os.chdir(cwd)
         self.mod, self.K = mod, np.asarray(K, float)
-        self.note = "Detected rocks" if self.detector.is_rock_model else "Detected objects (COCO: no rock weights)"
+        # SIM ONLY: no class names. Until rock/dust weights exist YOLO falls back to COCO and calls rocks "bird",
+        # "cow"... Every detection is just an "object" here (boxes, stereo distance and the decision are unchanged).
+        # This renames on this one detector object; the team's detection code and main.py are not touched.
+        self.detector.class_name = lambda class_id: "object"
+        self.note = "Detected objects (names off in the sim)"
         self.panel_h = mod.TARGET_HEIGHT // 2
         self.worker = mod.Worker(mod.Perception(self.detector, self.K, (mod.PANEL_W, self.panel_h)))
         self.worker.start()
@@ -233,7 +240,11 @@ class TeamPerception:
         import cv2
         mod = self.mod
         ann = small.copy()
-        mod.annotate(ann, res["terrain"], res["rocks"], self.K)
+        mod.annotate(ann, res["terrain"], [], self.K)       # the team's obstacle boxes + drop/slope edge
+        for (x1, y1, x2, y2), _name, dist, _in_path in res["rocks"]:    # YOLO boxes: green, distance only
+            x1, y1, x2, y2 = (int(v) for v in (x1, y1, x2, y2))
+            cv2.rectangle(ann, (x1, y1), (x2, y2), DETECT_GREEN, 2, cv2.LINE_AA)
+            mod.put(ann, f"{dist:.2f} m" if dist is not None else "no depth", (x1, max(y1 - 8, 16)), 0.5, DETECT_GREEN)
         h, w = img.shape[:2]
         drawn = (cv2.absdiff(ann, small).max(2) > 0).astype(np.uint8) * 255
         mask = cv2.resize(drawn, (w, h), interpolation=cv2.INTER_LINEAR) > 64

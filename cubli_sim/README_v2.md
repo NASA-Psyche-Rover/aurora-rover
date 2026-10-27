@@ -31,7 +31,7 @@ To use other copies, set `CUBLI_PERCEPTION_DIR` / `CUBLI_SENSORS_DIR`.
 - **What it shows:** the team's `OAKD-obj-detec.py` pipeline from `perception/`: YOLO boxes with their stereo distance, in-path obstacles, the drop/slope edge, and the PROCEED / CAUTION / STOP decision with its reason.
 - **What it runs on:** the real 640×480 OAK-D stream. The drawing is laid over the sharper 960×720 render.
 - **Y** turns it on or off. YOLO runs in its own thread, so the picture never waits for it.
-- **Labels:** until `perception/models/best.pt` holds trained rock weights, YOLO falls back to COCO, and rocks show up as "bird", "cow" and so on. The distances and the decision are still metric.
+- **No names (for now):** YOLO boxes are drawn green with their stereo distance only. Until `perception/models/best.pt` holds rock weights, YOLO falls back to COCO class names ("bird", "cow"), so the sim drops them and every detection is an "object". This is in `sensor_bridge.py` only; `perception/` is unchanged.
 
 ## Sensor head on a fake gimbal, richer terrain (branch `worktree-sensors-gimbal-terrain`)
 
